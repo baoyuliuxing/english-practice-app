@@ -1,16 +1,18 @@
 import { useState } from 'react';
 import type { DiaryResult } from '@/types';
+import { ClickableEnglish } from '@/components/ClickableEnglish';
 
 interface Props {
   diary: DiaryResult;
   onNewSession: () => void;
+  onAddWord?: (word: string, context: string) => void;
 }
 
 /**
  * 日记展示组件
- * 展示 AI 生成的结构化英文日记，支持复制和开始新会话
+ * 展示 AI 生成的结构化英文日记，支持复制、分享和选词加入生词本
  */
-export function DiaryView({ diary, onNewSession }: Props) {
+export function DiaryView({ diary, onNewSession, onAddWord }: Props) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -20,7 +22,6 @@ export function DiaryView({ diary, onNewSession }: Props) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // 降级方案
       const ta = document.createElement('textarea');
       ta.value = text;
       document.body.appendChild(ta);
@@ -38,7 +39,7 @@ export function DiaryView({ diary, onNewSession }: Props) {
       try {
         await navigator.share({ title: diary.title, text });
       } catch {
-        // 用户取消分享，忽略
+        // 用户取消分享
       }
     } else {
       handleCopy();
@@ -61,15 +62,17 @@ export function DiaryView({ diary, onNewSession }: Props) {
       {/* 日记内容 */}
       <div className="flex-1 overflow-y-auto px-4 py-6">
         <div className="max-w-2xl mx-auto">
-          {/* 标题 */}
-          <h1 className="text-2xl font-bold text-slate-100 mb-1">{diary.title}</h1>
+          {/* 标题（可选词） */}
+          <h1 className="text-2xl font-bold text-slate-100 mb-1">
+            <ClickableEnglish text={diary.title} onAddWord={onAddWord} />
+          </h1>
           <p className="text-sm text-slate-500 mb-6">{diary.date}</p>
 
-          {/* 正文 */}
+          {/* 正文（可选词） */}
           <div className="prose prose-invert max-w-none">
             {diary.body.split('\n').map((para, i) => (
               <p key={i} className="text-base text-slate-200 leading-relaxed mb-4">
-                {para}
+                <ClickableEnglish text={para} onAddWord={onAddWord} />
               </p>
             ))}
           </div>
@@ -92,6 +95,13 @@ export function DiaryView({ diary, onNewSession }: Props) {
                 </div>
               </div>
             </div>
+          )}
+
+          {/* 提示 */}
+          {onAddWord && (
+            <p className="text-xs text-slate-600 text-center mb-4">
+              💡 点击英文单词旁的 + 可加入生词本
+            </p>
           )}
 
           {/* 操作按钮 */}
