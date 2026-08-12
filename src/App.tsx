@@ -158,7 +158,7 @@ export default function App() {
   if (session?.diaryGenerated && session?.diary) {
     return (
       <div className="flex flex-col" style={{ height: '100dvh' }}>
-        <DiaryView diary={session.diary} onNewSession={clearSession} />
+        <DiaryView diary={session.diary} onNewSession={clearSession} onAddWord={handleAddWord} />
       </div>
     );
   }
