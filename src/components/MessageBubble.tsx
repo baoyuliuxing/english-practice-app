@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
 import type { ChatMessage } from '@/types';
+import { ClickableEnglish } from '@/components/ClickableEnglish';
 
 interface Props {
   message: ChatMessage;
@@ -10,79 +10,10 @@ interface Props {
  * 单条消息渲染组件（统一模式：纠错+对话二合一）
  * - 用户消息：右侧气泡
  * - AI 回复：纠错卡片 + 底部对话引导区
- * - 英文单词：点击 + 按钮加入生词本
+ * - 英文单词：点击 + 按钮加入生词本（使用共享 ClickableEnglish 组件）
  */
 export function MessageBubble({ message, onAddWord }: Props) {
   const isUser = message.role === 'user';
-  const [addingWord, setAddingWord] = useState<string | null>(null);
-  const [addedWord, setAddedWord] = useState<string | null>(null);
-
-  // ── 添加单词 ──────────────────────────────────────────
-
-  const handleAddWord = useCallback((word: string, fullText: string) => {
-    if (!onAddWord || addingWord) return;
-
-    // 清理单词（去掉尾部标点）
-    const cleanWord = word.replace(/[^a-zA-Z'’\-]$/, '');
-    if (cleanWord.length < 2) return;
-
-    setAddingWord(cleanWord);
-    onAddWord(cleanWord, fullText);
-
-    // 显示短暂的成功反馈
-    setAddedWord(cleanWord);
-    setTimeout(() => setAddedWord(null), 1500);
-    setTimeout(() => setAddingWord(null), 2000);
-  }, [onAddWord, addingWord]);
-
-  // ── 英文句子拆分为可点击单词 ──────────────────────────
-
-  const EnglishWithAddButtons = ({ text, className = '' }: { text: string; className?: string }) => {
-    // 按空格和标点拆分，保留标点
-    const tokens = text.match(/[\w'’\-]+|[^\w'’\-]+/g) || [text];
-    const fullText = text;
-
-    return (
-      <p className={`leading-relaxed ${className}`}>
-        {tokens.map((token, i) => {
-          // 判断是否为英文单词
-          if (/^[a-zA-Z'’\-]+$/.test(token) && token.length > 1) {
-            const isThisAdding = addingWord === token.replace(/[^a-zA-Z'’\-]$/, '');
-            const isThisAdded = addedWord === token.replace(/[^a-zA-Z'’\-]$/, '');
-
-            return (
-              <span key={i} className="relative inline-flex group/word">
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleAddWord(token, fullText);
-                  }}
-                  disabled={isThisAdding}
-                  className={`relative cursor-pointer rounded transition-colors ${
-                    isThisAdded ? 'text-emerald-400' : 'hover:text-brand-300'
-                  }`}
-                  title={`添加 "${token}" 到生词本`}
-                >
-                  {token}
-                  {/* 悬浮 + 标记 */}
-                  <span className={`absolute -top-1 -right-1 w-3 h-3 rounded-full flex items-center justify-center text-[7px] font-bold leading-none transition-all ${
-                    isThisAdded
-                      ? 'bg-emerald-500 text-white scale-100'
-                      : 'bg-brand-500 text-white scale-0 group-hover/word:scale-100'
-                  }`}>
-                    {isThisAdded ? '✓' : '+'}
-                  </span>
-                </button>
-              </span>
-            );
-          }
-          // 非英文单词（中文、标点、数字）原样显示
-          return <span key={i}>{token}</span>;
-        })}
-      </p>
-    );
-  };
 
   // ── 用户消息 ──────────────────────────────────────────
 
@@ -125,10 +56,9 @@ export function MessageBubble({ message, onAddWord }: Props) {
                 </span>
               )}
             </div>
-            <EnglishWithAddButtons
-              text={result.corrected}
-              className="text-base text-slate-100 font-medium"
-            />
+            <div className="text-base text-slate-100 font-medium leading-relaxed">
+              <ClickableEnglish text={result.corrected} onAddWord={onAddWord} />
+            </div>
           </div>
 
           {/* 原文对比 */}
@@ -159,7 +89,9 @@ export function MessageBubble({ message, onAddWord }: Props) {
                 {result.suggestions.map((s, i) => (
                   <li key={i} className="text-sm text-slate-300 flex items-start gap-1.5">
                     <span className="text-brand-400 mt-0.5 shrink-0">→</span>
-                    <EnglishWithAddButtons text={s} className="text-sm text-slate-300" />
+                    <span className="text-sm text-slate-300 leading-relaxed">
+                      <ClickableEnglish text={s} onAddWord={onAddWord} />
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -172,10 +104,9 @@ export function MessageBubble({ message, onAddWord }: Props) {
           <div className="bg-brand-500/10 border-t border-brand-500/20 px-4 py-3">
             <div className="flex items-start gap-2">
               <span className="text-brand-400 text-sm shrink-0 mt-0.5">💬</span>
-              <EnglishWithAddButtons
-                text={result.followUp}
-                className="text-sm text-slate-200"
-              />
+              <span className="text-sm text-slate-200 leading-relaxed">
+                <ClickableEnglish text={result.followUp} onAddWord={onAddWord} />
+              </span>
             </div>
           </div>
         )}
