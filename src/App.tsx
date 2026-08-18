@@ -10,6 +10,7 @@ import { ApiKeyModal } from '@/components/ApiKeyModal';
 import { CalendarWorkspace } from '@/components/CalendarWorkspace';
 import { DayDiaryModal } from '@/components/DayDiaryModal';
 import { VocabularyBook } from '@/components/VocabularyBook';
+import { DataTransferModal } from '@/components/DataTransferModal';
 import { hasApiKey } from '@/lib/apiKey';
 import { lookupWord } from '@/lib/api';
 import { addVocabItem, genVocabId } from '@/lib/db';
@@ -17,6 +18,10 @@ import type { PracticeSession } from '@/types';
 
 /**
  * 键盘弹起处理 Hook
+ * 现代浏览器（interactive-widget=resizes-content）：布局视口自动压缩，
+ *   innerHeight 与 vv.height 同步缩小，diff≈0 → 不干预，由 CSS 的 100dvh 自动处理。
+ * 旧浏览器（resizes-visual 行为）：innerHeight 不变而 vv.height 缩小，
+ *   diff>100 → 返回键盘高度，容器内联 calc(100vh - Xpx) 补偿。
  */
 function useKeyboardAvoid() {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -73,6 +78,7 @@ export default function App() {
   const [apiKeyReady, setApiKeyReady] = useState(hasApiKey());
   const [showCalendar, setShowCalendar] = useState(false);
   const [showVocab, setShowVocab] = useState(false);
+  const [showDataTransfer, setShowDataTransfer] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedDateSession, setSelectedDateSession] = useState<PracticeSession | undefined>(undefined);
   const [toast, setToast] = useState<string | null>(null);
@@ -117,7 +123,7 @@ export default function App() {
     }
   }, [addingWord, vocabList, session?.id, refreshVocab]);
 
-  // ── 自动滚动到底部 ──────────────────────────────────────
+  // ── 自动滚动到底部（键盘弹起时也重新滚到底） ─────────────
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -126,7 +132,7 @@ export default function App() {
         behavior: 'smooth'
       });
     }
-  }, [session?.messages, loading]);
+  }, [session?.messages, loading, keyboardHeight]);
 
   const handleEndSession = () => setShowEndConfirm(true);
 
@@ -157,7 +163,7 @@ export default function App() {
 
   if (session?.diaryGenerated && session?.diary) {
     return (
-      <div className="flex flex-col" style={{ height: '100dvh' }}>
+      <div className="flex flex-col app-height">
         <DiaryView diary={session.diary} onNewSession={clearSession} onAddWord={handleAddWord} />
       </div>
     );
@@ -165,15 +171,11 @@ export default function App() {
 
   return (
     <div
-      className="flex flex-col max-w-2xl mx-auto relative"
-      style={{
-        height: keyboardHeight > 0
-          ? `calc(100vh - ${keyboardHeight}px)`
-          : '100vh'
-      }}
+      className="flex flex-col max-w-2xl mx-auto relative app-height"
+      style={keyboardHeight > 0 ? { height: `calc(100vh - ${keyboardHeight}px)` } : undefined}
     >
       {/* ── 顶部栏 ──────────────────────────────────────── */}
-      <header className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/95 backdrop-blur-sm safe-bottom">
+      <header className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/95 backdrop-blur-sm safe-top">
         <div className="flex items-center gap-1">
           <button
             onClick={() => setShowHistory(true)}
@@ -204,6 +206,14 @@ export default function App() {
                 {vocabList.length > 99 ? '99+' : vocabList.length}
               </span>
             )}
+          </button>
+          <button
+            onClick={() => setShowDataTransfer(true)}
+            className="w-9 h-9 rounded-lg hover:bg-slate-800 flex items-center justify-center text-slate-400"
+            aria-label="数据导入导出"
+            title="数据导入导出"
+          >
+            <span className="text-base">⇄</span>
           </button>
         </div>
 
@@ -363,6 +373,18 @@ export default function App() {
           onToggleMastered={toggleVocabMastered}
           onDelete={deleteVocabItem}
           onClose={() => setShowVocab(false)}
+        />
+      )}
+
+      {showDataTransfer && (
+        <DataTransferModal
+          sessions={history}
+          vocabList={vocabList}
+          onImported={async () => {
+            await refreshHistory();
+            await refreshVocab();
+          }}
+          onClose={() => setShowDataTransfer(false)}
         />
       )}
     </div>
