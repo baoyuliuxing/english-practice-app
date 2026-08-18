@@ -10,6 +10,11 @@ node_modules/
 dist/
 dist-ssr/
 
+# TypeScript 编译残留（防止 vite.config.js 覆盖 .ts 生效）
+vite.config.js
+vite.config.d.ts
+*.tsbuildinfo
+
 # 编辑器
 .vscode/*
 !.vscode/extensions.json
