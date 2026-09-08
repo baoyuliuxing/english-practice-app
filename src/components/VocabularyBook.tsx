@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import type { VocabItem } from '@/types';
-import { isSpeechSupported, speakEnglish } from '@/lib/speech';
+import { speakEnglish } from '@/lib/speech';
 
 interface Props {
   vocabList: VocabItem[];
@@ -26,8 +26,6 @@ export function VocabularyBook({ vocabList, onToggleMastered, onDelete, onClose 
   const [flippedItems, setFlippedItems] = useState<Set<string>>(new Set());
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [speakError, setSpeakError] = useState<string | null>(null);
-
-  const canSpeak = isSpeechSupported();
 
   const filtered = useMemo(() => {
     let list = vocabList;
@@ -232,20 +230,18 @@ export function VocabularyBook({ vocabList, onToggleMastered, onDelete, onClose 
                   </div>
 
                   {/* 操作栏：大按钮，常显（手机无 hover） */}
-                  <div className={`grid gap-2 mt-3 pt-3 border-t border-slate-700/50 ${canSpeak ? 'grid-cols-3' : 'grid-cols-2'}`}>
-                    {canSpeak && (
-                      <button
-                        onClick={(e) => handleSpeak(e, item)}
-                        className={`h-10 rounded-xl flex items-center justify-center gap-1.5 text-xs font-medium transition-colors ${
-                          speakingId === item.id
-                            ? 'bg-brand-500 text-white'
-                            : 'bg-slate-700/70 text-slate-200 hover:bg-slate-600'
-                        }`}
-                        title="朗读单词"
-                      >
-                        🔊 发音
-                      </button>
-                    )}
+                  <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-slate-700/50">
+                    <button
+                      onClick={(e) => handleSpeak(e, item)}
+                      className={`h-10 rounded-xl flex items-center justify-center gap-1.5 text-xs font-medium transition-colors ${
+                        speakingId === item.id
+                          ? 'bg-brand-500 text-white'
+                          : 'bg-slate-700/70 text-slate-200 hover:bg-slate-600'
+                      }`}
+                      title="朗读单词"
+                    >
+                      🔊 发音
+                    </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
