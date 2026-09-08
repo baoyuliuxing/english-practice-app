@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import type { VocabItem } from '@/types';
+import { isSpeechSupported, speakEnglish } from '@/lib/speech';
 
 interface Props {
   vocabList: VocabItem[];
@@ -16,12 +17,16 @@ type CoverMode = 'none' | 'coverChinese' | 'coverEnglish';
  * - 列表展示所有提取的词汇
  * - 按掌握状态筛选
  * - 遮盖中文/英文背诵模式
+ * - 🔊 单词发音（Web Speech API）
  */
 export function VocabularyBook({ vocabList, onToggleMastered, onDelete, onClose }: Props) {
   const [filter, setFilter] = useState<FilterType>('all');
   const [coverMode, setCoverMode] = useState<CoverMode>('none');
   const [search, setSearch] = useState('');
   const [flippedItems, setFlippedItems] = useState<Set<string>>(new Set());
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+
+  const canSpeak = isSpeechSupported();
 
   const filtered = useMemo(() => {
     let list = vocabList;
@@ -51,6 +56,13 @@ export function VocabularyBook({ vocabList, onToggleMastered, onDelete, onClose 
       else next.add(id);
       return next;
     });
+  };
+
+  const handleSpeak = (e: React.MouseEvent, item: VocabItem) => {
+    e.stopPropagation();
+    speakEnglish(item.word);
+    setSpeakingId(item.id);
+    setTimeout(() => setSpeakingId(null), 1200);
   };
 
   const getErrorTypeLabel = (type: string) => {
@@ -175,72 +187,83 @@ export function VocabularyBook({ vocabList, onToggleMastered, onDelete, onClose 
                 <div
                   key={item.id}
                   onClick={() => toggleFlip(item.id)}
-                  className={`group rounded-xl border p-3 transition-all cursor-pointer ${
+                  className={`rounded-xl border p-3 transition-all cursor-pointer ${
                     item.mastered
                       ? 'bg-emerald-500/5 border-emerald-500/20'
                       : 'bg-slate-800/50 border-slate-700/50 hover:border-slate-600'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      {/* 单词 + 标签 */}
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <span className={`text-base font-bold ${
-                          showEnglish ? 'text-slate-100' : 'text-slate-700 select-none'
-                        }`}>
-                          {item.word}
-                        </span>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${getErrorTypeColor(item.errorType)}`}>
-                          {getErrorTypeLabel(item.errorType)}
-                        </span>
-                        {item.mastered && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400">
-                            ✓ 已掌握
-                          </span>
-                        )}
-                      </div>
-
-                      {/* 释义 */}
-                      <p className={`text-sm mb-1.5 ${
-                        showChinese ? 'text-slate-300' : 'text-slate-700 select-none'
+                  {/* 内容区 */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className={`text-base font-bold ${
+                        showEnglish ? 'text-slate-100' : 'text-slate-700 select-none'
                       }`}>
-                        {item.meaning}
-                      </p>
-
-                      {/* 例句 */}
-                      <p className="text-xs text-slate-500 line-clamp-2">
-                        <span className="line-through text-slate-600">{item.example}</span>
-                        <span className="text-slate-400"> → {item.correctedExample}</span>
-                      </p>
+                        {item.word}
+                      </span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${getErrorTypeColor(item.errorType)}`}>
+                        {getErrorTypeLabel(item.errorType)}
+                      </span>
+                      {item.mastered && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400">
+                          ✓ 已掌握
+                        </span>
+                      )}
                     </div>
 
-                    {/* 操作按钮 */}
-                    <div className="flex flex-col gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {/* 释义 */}
+                    <p className={`text-sm mb-1.5 ${
+                      showChinese ? 'text-slate-300' : 'text-slate-700 select-none'
+                    }`}>
+                      {item.meaning}
+                    </p>
+
+                    {/* 例句 */}
+                    <p className="text-xs text-slate-500 line-clamp-2">
+                      <span className="line-through text-slate-600">{item.example}</span>
+                      <span className="text-slate-400"> → {item.correctedExample}</span>
+                    </p>
+                  </div>
+
+                  {/* 操作栏：大按钮，常显（手机无 hover） */}
+                  <div className={`grid gap-2 mt-3 pt-3 border-t border-slate-700/50 ${canSpeak ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                    {canSpeak && (
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onToggleMastered(item.id, !item.mastered);
-                        }}
-                        className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs transition-colors ${
-                          item.mastered
-                            ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
-                            : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                        onClick={(e) => handleSpeak(e, item)}
+                        className={`h-10 rounded-xl flex items-center justify-center gap-1.5 text-xs font-medium transition-colors ${
+                          speakingId === item.id
+                            ? 'bg-brand-500 text-white'
+                            : 'bg-slate-700/70 text-slate-200 hover:bg-slate-600'
                         }`}
-                        title={item.mastered ? '标记未掌握' : '标记已掌握'}
+                        title="朗读单词"
                       >
-                        {item.mastered ? '✓' : '○'}
+                        🔊 发音
                       </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDelete(item.id);
-                        }}
-                        className="w-7 h-7 rounded-lg bg-slate-700 hover:bg-red-500/20 text-slate-400 hover:text-red-400 flex items-center justify-center text-xs transition-colors"
-                        title="删除"
-                      >
-                        🗑
-                      </button>
-                    </div>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleMastered(item.id, !item.mastered);
+                      }}
+                      className={`h-10 rounded-xl flex items-center justify-center gap-1.5 text-xs font-medium transition-colors ${
+                        item.mastered
+                          ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
+                          : 'bg-slate-700/70 text-slate-200 hover:bg-slate-600'
+                      }`}
+                      title={item.mastered ? '标记未掌握' : '标记已掌握'}
+                    >
+                      {item.mastered ? '✓ 已掌握' : '○ 掌握'}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(item.id);
+                      }}
+                      className="h-10 rounded-xl bg-slate-700/70 hover:bg-red-500/20 text-slate-300 hover:text-red-400 flex items-center justify-center gap-1.5 text-xs font-medium transition-colors"
+                      title="删除"
+                    >
+                      🗑 删除
+                    </button>
                   </div>
                 </div>
               );
