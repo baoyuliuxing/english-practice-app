@@ -361,8 +361,6 @@ export default function App() {
           }}
           onSessionUpdated={() => {
             refreshHistory();
-            setSelectedDate(null);
-            setSelectedDateSession(undefined);
           }}
         />
       )}
