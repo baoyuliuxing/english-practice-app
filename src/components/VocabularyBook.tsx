@@ -25,6 +25,7 @@ export function VocabularyBook({ vocabList, onToggleMastered, onDelete, onClose 
   const [search, setSearch] = useState('');
   const [flippedItems, setFlippedItems] = useState<Set<string>>(new Set());
   const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const [speakError, setSpeakError] = useState<string | null>(null);
 
   const canSpeak = isSpeechSupported();
 
@@ -60,9 +61,14 @@ export function VocabularyBook({ vocabList, onToggleMastered, onDelete, onClose 
 
   const handleSpeak = (e: React.MouseEvent, item: VocabItem) => {
     e.stopPropagation();
-    speakEnglish(item.word);
+    setSpeakError(null);
     setSpeakingId(item.id);
-    setTimeout(() => setSpeakingId(null), 1200);
+    setTimeout(() => setSpeakingId(null), 1500);
+    speakEnglish(item.word, 0.9, (msg) => {
+      setSpeakingId(null);
+      setSpeakError(msg);
+      setTimeout(() => setSpeakError(null), 4000);
+    });
   };
 
   const getErrorTypeLabel = (type: string) => {
@@ -271,11 +277,15 @@ export function VocabularyBook({ vocabList, onToggleMastered, onDelete, onClose 
           )}
         </div>
 
-        {/* 底部提示 */}
-        <div className="px-4 py-2 border-t border-slate-800 text-center">
-          <p className="text-[11px] text-slate-600">
-            {coverMode !== 'none' ? '👆 点击卡片翻转查看被遮盖的内容' : '💡 使用遮盖模式进行背诵练习'}
-          </p>
+        {/* 底部提示 / 发音错误提示 */}
+        <div className="px-4 py-2 border-t border-slate-800 text-center min-h-[32px] flex items-center justify-center">
+          {speakError ? (
+            <p className="text-[11px] text-amber-400 leading-snug">⚠ {speakError}</p>
+          ) : (
+            <p className="text-[11px] text-slate-600">
+              {coverMode !== 'none' ? '👆 点击卡片翻转查看被遮盖的内容' : '💡 使用遮盖模式进行背诵练习'}
+            </p>
+          )}
         </div>
       </div>
     </div>
