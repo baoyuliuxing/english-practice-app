@@ -217,7 +217,10 @@ export default function App() {
           </button>
         </div>
 
-        <h1 className="text-base font-semibold text-slate-100">英语练习</h1>
+        <h1 className="text-base font-semibold text-slate-100">
+          英语练习
+          <span className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle">v2.1</span>
+        </h1>
 
         <div className="flex items-center gap-2">
           <button
