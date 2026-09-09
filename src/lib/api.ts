@@ -97,7 +97,23 @@ Respond in this exact JSON (no markdown fences, no extra text):
 Rules:
 - "meaning" must be short and accurate Chinese.
 - "example": MUST contain the target word; trim the context to keep it short and readable. If the context doesn't contain the word (e.g. isolated word click), reuse the context as-is.
-- "errorType": vocabulary for general words, grammar for function words, usage for tricky usage, idiom for fixed expressions, phrasal_verb for verb+preposition combos.`
+- "errorType": vocabulary for general words, grammar for function words, usage for tricky usage, idiom for fixed expressions, phrasal_verb for verb+preposition combos.`,
+
+  /** 为存量生词生成必含目标词的简洁例句 */
+  wordExample: `You are an English tutor. Given a single English word or phrase, write ONE short, natural, correct English sentence that CONTAINS that word/phrase (exactly as given, preserving tense/word form).
+
+Respond in this exact JSON (no markdown fences, no extra text):
+
+{
+  "word": "<the word>",
+  "example": "<one short English sentence (5-15 words) that contains the word>"
+}
+
+Rules:
+- The example MUST contain the specified word/phrase verbatim (allow inflections like -s/-ed/-ing).
+- Keep it short and easy for a learner.
+- Use common, everyday vocabulary and grammar.
+- Output only the JSON object.`
 };
 
 // ── 辅助：从 AI 文本中提取 JSON ──────────────────────────
@@ -249,5 +265,17 @@ export async function lookupWord(
     { role: 'user', content: JSON.stringify({ word, context }) }
   ];
   const content = await callDeepSeek(messages, 0.1, 200);
+  return extractJson(content);
+}
+
+/** 为存量/缺失例句的生词，生成一句必含目标词的简洁例句 */
+export async function generateWordExample(
+  word: string
+): Promise<{ word: string; example: string }> {
+  const messages = [
+    { role: 'system', content: SYSTEM_PROMPTS.wordExample },
+    { role: 'user', content: JSON.stringify({ word }) }
+  ];
+  const content = await callDeepSeek(messages, 0.4, 200);
   return extractJson(content);
 }

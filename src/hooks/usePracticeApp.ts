@@ -1,7 +1,8 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { PracticeSession, ChatMessage, VocabItem, UnifiedResult } from '@/types';
 import * as db from '@/lib/db';
 import * as api from '@/lib/api';
+import { hasSentenceContainingWord } from '@/lib/clip';
 
 /** 保存会话处理一条消息（纠错+对话），返回更新的会话与提取的词汇来源 followUp */
 async function handleTurn(
@@ -171,7 +172,7 @@ export function usePracticeApp() {
 
     try {
       const { session: updatedSession, assistantMsg } = await handleTurn(
-        { ...currentSession, messages: [...currentSession.messages, userMsg] },
+        currentSession,
         text
       );
       setSession(updatedSession);
@@ -289,7 +290,7 @@ export function usePracticeApp() {
 
     try {
       const { session: updatedSession, assistantMsg } = await handleTurn(
-        { ...currentSession, messages: [...currentSession.messages, userMsg] },
+        currentSession,
         text
       );
       setBackfillSession(updatedSession);
@@ -395,6 +396,34 @@ export function usePracticeApp() {
     await refreshVocab();
   }, [refreshVocab]);
 
+  // 正在补例句的词（避免并发重复请求）
+  const fixingRef = useRef<Set<string>>(new Set());
+
+  /**
+   * 若词条没有任何句子包含目标单词，则调用 AI 生成一句必含该词的例句并保存。
+   * 用于修复存量坏数据（AI 此前给的 example 不包含目标词）。
+   */
+  const ensureVocabExample = useCallback(async (item: VocabItem) => {
+    if (fixingRef.current.has(item.id)) return;
+    // 已存在含目标词的句子，无需修复
+    if (hasSentenceContainingWord(item)) return;
+    if (!item.word) return;
+
+    fixingRef.current.add(item.id);
+    try {
+      const res = await api.generateWordExample(item.word);
+      const example = (res?.example || '').trim();
+      if (example) {
+        await db.updateVocabExample(item.id, example);
+        await refreshVocab();
+      }
+    } catch (err) {
+      console.warn('generateWordExample failed:', err);
+    } finally {
+      fixingRef.current.delete(item.id);
+    }
+  }, [refreshVocab]);
+
   return {
     session,
     loading,
@@ -414,6 +443,7 @@ export function usePracticeApp() {
     toggleVocabMastered,
     deleteVocabItem,
     refreshVocab,
+    ensureVocabExample,
     // 补写会话
     backfillDate,
     backfillSession,

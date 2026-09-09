@@ -1,13 +1,15 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { VocabItem } from '@/types';
 import { speakEnglish } from '@/lib/speech';
 import { MarkedEnglish } from '@/components/MarkedEnglish';
-import { clipAroundWord, isSimpleExampleOnly } from '@/lib/clip';
+import { clipAroundWord, isSimpleExampleOnly, containsWord, pickWordSentence } from '@/lib/clip';
 
 interface Props {
   vocabList: VocabItem[];
   onToggleMastered: (id: string, mastered: boolean) => void;
   onDelete: (id: string) => void;
+  /** 词条若无含目标词的例句，回调触发补全（AI 生成例句） */
+  onEnsureExample?: (item: VocabItem) => void;
   onClose: () => void;
 }
 
@@ -21,13 +23,28 @@ type CoverMode = 'none' | 'coverChinese' | 'coverEnglish';
  * - 遮盖中文/英文背诵模式
  * - 🔊 单词发音（Web Speech API）
  */
-export function VocabularyBook({ vocabList, onToggleMastered, onDelete, onClose }: Props) {
+export function VocabularyBook({ vocabList, onToggleMastered, onDelete, onEnsureExample, onClose }: Props) {
   const [filter, setFilter] = useState<FilterType>('all');
   const [coverMode, setCoverMode] = useState<CoverMode>('none');
   const [search, setSearch] = useState('');
   const [flippedItems, setFlippedItems] = useState<Set<string>>(new Set());
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [speakError, setSpeakError] = useState<string | null>(null);
+
+  // 打开时检查：若某词条没有任何句子含目标词，触发 AI 补例句
+  useEffect(() => {
+    if (!onEnsureExample) return;
+    const needFix = vocabList.filter(v => {
+      const w = v.highlight || v.word;
+      const anyHas = [v.original, v.correctedExample, v.example]
+        .filter(Boolean)
+        .some(s => w && containsWord(s as string, w));
+      return !anyHas && !!w;
+    });
+    needFix.forEach(v => onEnsureExample(v));
+    // 仅在词量变化时检查一次，避免无限循环
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vocabList.length]);
 
   const filtered = useMemo(() => {
     let list = vocabList;
@@ -224,16 +241,34 @@ export function VocabularyBook({ vocabList, onToggleMastered, onDelete, onClose 
                       {item.meaning}
                     </p>
 
-                    {/* 例句展示区：按错误类型区分长度与结构 */}
+                    {/* 例句展示区：优先挑"包含目标单词"的句子 */}
                     {(() => {
                       const word = item.highlight || item.word;
                       const simpleOnly = isSimpleExampleOnly(item);
                       const clipText = (t?: string) =>
                         clipAroundWord(t || '', word, 110);
 
+                      // 是否有任何句子包含目标词
+                      const anyHasWord = [item.original, item.correctedExample, item.example]
+                        .filter(Boolean)
+                        .some(s => word && containsWord(s as string, word));
+
+                      // 都没有则等 AI 补全例句
+                      if (!anyHasWord) {
+                        return (
+                          <div className="mb-1">
+                            <p className="text-[10px] text-slate-600 mb-0.5">例句</p>
+                            <p className="text-xs text-amber-400/80 leading-relaxed">
+                              🔍 正在生成包含「{word}」的例句…
+                            </p>
+                          </div>
+                        );
+                      }
+
                       if (simpleOnly) {
-                        // 生词类 / 手动添加：只给一句短例句，不对比
-                        const src = clipText(item.example || item.correctedExample || item.original);
+                        // 生词类 / 手动添加：只给一句含词短例句，不对比
+                        const pick = pickWordSentence(item);
+                        const src = clipText(pick);
                         return (
                           <div className="mb-1">
                             <p className="text-[10px] text-slate-600 mb-0.5">例句</p>
@@ -244,17 +279,21 @@ export function VocabularyBook({ vocabList, onToggleMastered, onDelete, onClose 
                         );
                       }
 
-                      // 语法/拼写/用法/翻译：原句 + 改后，各截取含词关键句
-                      const originalSrc = clipText(item.original);
-                      const correctedSrc = clipText(item.correctedExample);
+                      // 语法/拼写/用法/翻译：原句 + 改后，各挑含词关键句
+                      const originalHasWord = word && containsWord(item.original || '', word);
+                      const correctedHasWord = word && containsWord(item.correctedExample || '', word);
+                      const originalSrc = originalHasWord ? clipText(item.original) : '';
+                      const correctedSrc = correctedHasWord ? clipText(item.correctedExample) : '';
                       return (
                         <>
-                          <div className="mb-1.5">
-                            <p className="text-[10px] text-slate-600 mb-0.5">原句（你的句子）</p>
-                            <p className="text-xs text-slate-300 leading-relaxed">
-                              <MarkedEnglish text={originalSrc} word={word} />
-                            </p>
-                          </div>
+                          {originalSrc && (
+                            <div className="mb-1.5">
+                              <p className="text-[10px] text-slate-600 mb-0.5">原句（你的句子）</p>
+                              <p className="text-xs text-slate-300 leading-relaxed">
+                                <MarkedEnglish text={originalSrc} word={word} />
+                              </p>
+                            </div>
+                          )}
                           {correctedSrc && correctedSrc !== originalSrc && (
                             <div className="mb-1">
                               <p className="text-[10px] text-slate-600 mb-0.5">改后</p>

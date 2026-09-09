@@ -86,3 +86,39 @@ export function isSimpleExampleOnly(item: {
 }): boolean {
   return item.errorType === 'vocabulary' || !item.original || !item.original.trim();
 }
+
+/**
+ * 判断词条的现有句子（original / correctedExample / example）中，
+ * 是否至少有一个包含目标单词。
+ */
+export function hasSentenceContainingWord(item: {
+  word?: string;
+  highlight?: string;
+  original?: string;
+  correctedExample?: string;
+  example?: string;
+}): boolean {
+  const w = item.highlight || item.word;
+  if (!w) return false;
+  return [item.original, item.correctedExample, item.example]
+    .filter(Boolean)
+    .some((s) => containsWord(s as string, w));
+}
+
+/**
+ * 从词条的几个候选句子里，挑第一个包含目标单词的句子；都没有则返回第一个非空。
+ * 展示例句时优先用含词的句子。
+ */
+export function pickWordSentence(item: {
+  word?: string;
+  highlight?: string;
+  original?: string;
+  correctedExample?: string;
+  example?: string;
+}): string {
+  const w = item.highlight || item.word || '';
+  const candidates = [item.original, item.correctedExample, item.example]
+    .filter((s): s is string => !!s && !!s.trim());
+  const hit = candidates.find((s) => w && containsWord(s, w));
+  return hit || candidates[0] || '';
+}

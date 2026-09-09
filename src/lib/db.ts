@@ -97,6 +97,17 @@ export async function deleteVocab(id: string): Promise<void> {
   await db.delete(STORE_VOCAB, id);
 }
 
+/** 为生词补齐/替换必含目标词的例句 */
+export async function updateVocabExample(id: string, example: string): Promise<void> {
+  const db = await getDB();
+  const item = await db.get(STORE_VOCAB, id);
+  if (item) {
+    item.example = example;
+    item.correctedExample = item.correctedExample || example;
+    await db.put(STORE_VOCAB, item);
+  }
+}
+
 // ── 工具函数 ────────────────────────────────────────────
 
 export function createSession(): PracticeSession {
