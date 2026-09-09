@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import type { VocabItem } from '@/types';
 import { speakEnglish } from '@/lib/speech';
 import { MarkedEnglish } from '@/components/MarkedEnglish';
+import { clipAroundWord, isSimpleExampleOnly } from '@/lib/clip';
 
 interface Props {
   vocabList: VocabItem[];
@@ -223,57 +224,48 @@ export function VocabularyBook({ vocabList, onToggleMastered, onDelete, onClose 
                       {item.meaning}
                     </p>
 
-                    {/* 原句（错句）—— 用【】标出错误词位置，完整展示 */}
-                    {(item.original && item.original.trim()) ? (
-                      <div className="mb-1.5">
-                        <p className="text-[10px] text-slate-600 mb-0.5">原句（你的句子）</p>
-                        <p className={`text-xs text-slate-300 leading-relaxed ${
-                          isFlipped ? '' : 'line-clamp-4'
-                        }`}>
-                          <MarkedEnglish text={item.original} word={item.highlight || item.word} />
-                        </p>
-                      </div>
-                    ) : (
-                      /* 旧数据可能没有 original —— 用 correctedExample 展示并标位置 */
-                      <div className="mb-1.5">
-                        <p className="text-[10px] text-slate-600 mb-0.5">例句</p>
-                        <p className={`text-xs text-slate-300 leading-relaxed ${
-                          isFlipped ? '' : 'line-clamp-4'
-                        }`}>
-                          <MarkedEnglish text={item.example || item.correctedExample} word={item.highlight || item.word} />
-                        </p>
-                      </div>
-                    )}
+                    {/* 例句展示区：按错误类型区分长度与结构 */}
+                    {(() => {
+                      const word = item.highlight || item.word;
+                      const simpleOnly = isSimpleExampleOnly(item);
+                      const clipText = (t?: string) =>
+                        clipAroundWord(t || '', word, 110);
 
-                    {/* 改后句 —— 【】标出改后词位置（若含该词） */}
-                    {item.correctedExample && item.correctedExample.trim() && item.correctedExample !== item.original && (
-                      <div className="mb-1">
-                        <p className="text-[10px] text-slate-600 mb-0.5">改后</p>
-                        <p className={`text-xs text-emerald-200/90 leading-relaxed ${
-                          isFlipped ? '' : 'line-clamp-3'
-                        }`}>
-                          <MarkedEnglish text={item.correctedExample} word={item.highlight || item.word} />
-                        </p>
-                      </div>
-                    )}
-
-                    {/* AI 补充例句：仅当含目标词且与上述不同时展示，作为简洁参考 */}
-                    {item.example && item.example.trim() && item.example !== item.correctedExample && item.example !== item.original && (
-                      (() => {
-                        const re = new RegExp(
-                          (item.highlight || item.word).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "(?:'s|s|es|ed|ing|d)?\\b",
-                          'i'
+                      if (simpleOnly) {
+                        // 生词类 / 手动添加：只给一句短例句，不对比
+                        const src = clipText(item.example || item.correctedExample || item.original);
+                        return (
+                          <div className="mb-1">
+                            <p className="text-[10px] text-slate-600 mb-0.5">例句</p>
+                            <p className="text-xs text-slate-300 leading-relaxed">
+                              <MarkedEnglish text={src} word={word} />
+                            </p>
+                          </div>
                         );
-                        return re.test(item.example) ? (
-                          <p className={`text-[10px] text-slate-500 leading-relaxed ${
-                            isFlipped ? '' : 'line-clamp-2'
-                          }`}>
-                            <span className="text-slate-600">参考：</span>
-                            <MarkedEnglish text={item.example} word={item.highlight || item.word} />
-                          </p>
-                        ) : null;
-                      })()
-                    )}
+                      }
+
+                      // 语法/拼写/用法/翻译：原句 + 改后，各截取含词关键句
+                      const originalSrc = clipText(item.original);
+                      const correctedSrc = clipText(item.correctedExample);
+                      return (
+                        <>
+                          <div className="mb-1.5">
+                            <p className="text-[10px] text-slate-600 mb-0.5">原句（你的句子）</p>
+                            <p className="text-xs text-slate-300 leading-relaxed">
+                              <MarkedEnglish text={originalSrc} word={word} />
+                            </p>
+                          </div>
+                          {correctedSrc && correctedSrc !== originalSrc && (
+                            <div className="mb-1">
+                              <p className="text-[10px] text-slate-600 mb-0.5">改后</p>
+                              <p className="text-xs text-emerald-200/90 leading-relaxed">
+                                <MarkedEnglish text={correctedSrc} word={word} />
+                              </p>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
 
                   {/* 操作栏：大按钮，常显（手机无 hover） */}
@@ -326,11 +318,11 @@ export function VocabularyBook({ vocabList, onToggleMastered, onDelete, onClose 
             <p className="text-[11px] text-amber-400 leading-snug">⚠ {speakError}</p>
           ) : coverMode !== 'none' ? (
             <p className="text-[11px] text-slate-500 leading-snug">
-              👆 点击卡片翻转查看遮盖内容；再点一次展开完整句子
+              👆 点击卡片翻转查看遮盖内容
             </p>
           ) : (
             <p className="text-[11px] text-slate-600">
-              📌 原句中【】标出错误词位置 · 点击卡片可展开完整句子
+              📌 原句/例句中用【】标出关键位置 · 生词只给简洁例句
             </p>
           )}
         </div>
