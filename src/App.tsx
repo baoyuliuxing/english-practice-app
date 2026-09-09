@@ -11,6 +11,7 @@ import { CalendarWorkspace } from '@/components/CalendarWorkspace';
 import { DayDiaryModal } from '@/components/DayDiaryModal';
 import { VocabularyBook } from '@/components/VocabularyBook';
 import { DataTransferModal } from '@/components/DataTransferModal';
+import { BackfillChatView } from '@/components/BackfillChatView';
 import { hasApiKey } from '@/lib/apiKey';
 import { lookupWord } from '@/lib/api';
 import { addVocabItem, genVocabId } from '@/lib/db';
@@ -68,7 +69,15 @@ export default function App() {
     refreshHistory,
     toggleVocabMastered,
     deleteVocabItem,
-    refreshVocab
+    refreshVocab,
+    backfillDate,
+    backfillSession,
+    backfillLoading,
+    backfillError,
+    startBackfill,
+    sendBackfillMessage,
+    endBackfill,
+    cancelBackfill
   } = usePracticeApp();
 
   const keyboardHeight = useKeyboardAvoid();
@@ -83,6 +92,33 @@ export default function App() {
   const [selectedDateSession, setSelectedDateSession] = useState<PracticeSession | undefined>(undefined);
   const [toast, setToast] = useState<string | null>(null);
   const [addingWord, setAddingWord] = useState(false);
+  const [backfillBusy, setBackfillBusy] = useState(false);
+
+  // ── 补写对话：生成日记 / 保存退出 / 关闭 ──────────────────
+  const handleBackfillGenerate = useCallback(async () => {
+    if (backfillBusy) return;
+    setBackfillBusy(true);
+    const ok = await endBackfill();
+    setBackfillBusy(false);
+    if (ok) {
+      setToast('✓ 已生成该天的英文日记');
+      setTimeout(() => setToast(null), 2200);
+    }
+    // 失败时保留弹窗，error 由 hook 显示
+  }, [backfillBusy, endBackfill]);
+
+  const handleBackfillSaveExit = useCallback(() => {
+    cancelBackfill(true); // 保留已聊内容
+  }, [cancelBackfill]);
+
+  const handleBackfillClose = useCallback(() => {
+    // 有内容时询问式引导走"保存退出"，这里直接丢弃不保留会丢数据，故默认保留
+    if (backfillSession && backfillSession.messages.length > 0) {
+      cancelBackfill(true); // 保守保留已聊内容
+    } else {
+      cancelBackfill(false);
+    }
+  }, [backfillSession, cancelBackfill]);
 
   // ── 点击 + 按钮添加单词到生词本 ──────────────────────────
 
@@ -99,12 +135,14 @@ export default function App() {
     setAddingWord(true);
     try {
       const lookup = await lookupWord(word, context);
+      const lookupExample = (lookup.example || '').trim();
       const item = {
         id: genVocabId(),
         word: lookup.word || word,
         meaning: lookup.meaning || '',
-        example: context,
-        correctedExample: context,
+        example: lookupExample || context,
+        correctedExample: lookupExample || context,
+        highlight: lookup.word || word,
         errorType: lookup.errorType || 'vocabulary',
         addedAt: Date.now(),
         mastered: false,
@@ -219,7 +257,7 @@ export default function App() {
 
         <h1 className="text-base font-semibold text-slate-100">
           英语练习
-          <span className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle">v2.3</span>
+          <span className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle">v2.4</span>
         </h1>
 
         <div className="flex items-center gap-2">
@@ -354,13 +392,20 @@ export default function App() {
         />
       )}
 
-      {selectedDate && (
+      {selectedDate && !backfillDate && (
         <DayDiaryModal
           dateStr={selectedDate}
           session={selectedDateSession}
           onClose={() => {
             setSelectedDate(null);
             setSelectedDateSession(undefined);
+          }}
+          onEnterBackfill={(dateStr) => {
+            // 关闭日历详情，进入补写对话
+            setSelectedDate(null);
+            setSelectedDateSession(undefined);
+            setShowCalendar(false);
+            startBackfill(dateStr);
           }}
           onSessionUpdated={() => {
             refreshHistory();
@@ -386,6 +431,22 @@ export default function App() {
             await refreshVocab();
           }}
           onClose={() => setShowDataTransfer(false)}
+        />
+      )}
+
+      {/* ── 补写日记对话模式（全屏覆盖） ─────────────────── */}
+      {backfillDate && backfillSession && (
+        <BackfillChatView
+          session={backfillSession}
+          dateStr={backfillDate}
+          loading={backfillLoading}
+          error={backfillError}
+          busy={backfillBusy}
+          onSend={sendBackfillMessage}
+          onGenerateDiary={handleBackfillGenerate}
+          onSaveExit={handleBackfillSaveExit}
+          onClose={handleBackfillClose}
+          onAddWord={handleAddWord}
         />
       )}
     </div>

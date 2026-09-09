@@ -57,7 +57,8 @@ Rules:
 - Keep the tone personal and reflective.
 - The body should be 80-200 words.`,
 
-  vocab: `You are an English vocabulary extraction expert. Given a user's original sentence and its corrected version, identify the key vocabulary words or phrases that the learner got wrong or should learn.
+  vocab: `You are an English vocabulary extraction expert. Given a user's original sentence, its corrected English version, and an English conversational reply (from the AI tutor), identify the key vocabulary words or phrases the learner should learn.
+For EACH item, also provide a short simplified example sentence that contains the target word, drawn from the provided material.
 
 Respond in this exact JSON structure (no markdown fences, no extra text):
 
@@ -66,7 +67,8 @@ Respond in this exact JSON structure (no markdown fences, no extra text):
     {
       "word": "<the English word or phrase>",
       "meaning": "<concise Chinese translation>",
-      "errorType": "<grammar|spelling|translation|usage|vocabulary>"
+      "errorType": "<grammar|spelling|translation|usage|vocabulary>",
+      "example": "<a short simplified English sentence (5-15 words) that contains the target word, ideally trimmed from the corrected sentence or the conversational reply>"
     }
   ]
 }
@@ -77,21 +79,24 @@ Rules:
 - If the input was Chinese and translated, extract useful English words from the translation.
 - "meaning" should be concise Chinese (1-5 characters if possible).
 - "errorType" must be one of: grammar, spelling, translation, usage, vocabulary.
+- "example": keep it short, must contain the target word in its same inflected form (keep tense/plurality). Prefer cutting from the corrected sentence or conversational reply; do not invent long new sentences.
 - If no significant vocabulary errors, return empty items array: {"items": []}.`,
 
   /** 单个单词查询（长按添加生词用） */
-  lookupWord: `You are a concise English dictionary. Given an English word and its context sentence, provide a brief Chinese definition and classify the word.
+  lookupWord: `You are a concise English dictionary. Given an English word and its context sentence, provide a brief Chinese definition, classify the word, and supply a short example sentence drawn from the context.
 
 Respond in this exact JSON (no markdown fences, no extra text):
 
 {
   "word": "<the word>",
   "meaning": "<concise Chinese translation, 2-8 characters>",
-  "errorType": "<vocabulary|grammar|usage|idiom|phrasal_verb>"
+  "errorType": "<vocabulary|grammar|usage|idiom|phrasal_verb>",
+  "example": "<a short English sentence (3-15 words) taken from or lightly trimmed from the given context sentence, that contains the target word in its same inflected form>"
 }
 
 Rules:
 - "meaning" must be short and accurate Chinese.
+- "example": MUST contain the target word; trim the context to keep it short and readable. If the context doesn't contain the word (e.g. isolated word click), reuse the context as-is.
 - "errorType": vocabulary for general words, grammar for function words, usage for tricky usage, idiom for fixed expressions, phrasal_verb for verb+preposition combos.`
 };
 
@@ -178,40 +183,49 @@ export async function generateDiary(sentences: string[]): Promise<DiaryResult> {
 export async function extractVocabulary(
   original: string,
   corrected: string,
-  explanation: string
+  explanation: string,
+  /** AI 的英文接话（可作为例句来源） */
+  followUp?: string
 ): Promise<VocabItem[]> {
   const messages = [
     { role: 'system', content: SYSTEM_PROMPTS.vocab },
-    { role: 'user', content: JSON.stringify({ original, corrected, explanation }, null, 2) }
+    { role: 'user', content: JSON.stringify({ original, corrected, explanation, conversationalReply: followUp || '' }, null, 2) }
   ];
-  const content = await callDeepSeek(messages, 0.3, 300);
+  const content = await callDeepSeek(messages, 0.3, 400);
   const result = extractJson(content);
 
   if (!result.items || !Array.isArray(result.items)) return [];
 
-  return result.items.map((item: any) => ({
-    id: `vocab-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    word: item.word,
-    meaning: item.meaning,
-    example: original,
-    correctedExample: corrected,
-    errorType: item.errorType || 'vocabulary',
-    addedAt: Date.now(),
-    mastered: false,
-    reviewCount: 0,
-    sessionId: ''
-  }));
+  return result.items.map((item: any) => {
+    const word = String(item.word || '').trim();
+    const aiExample = String(item.example || '').trim();
+    return {
+      id: `vocab-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      word,
+      meaning: item.meaning,
+      // 展示例句：优先 AI 给的简化句；没有则退回改正句
+      example: aiExample || corrected,
+      original,
+      correctedExample: corrected,
+      highlight: word,
+      errorType: item.errorType || 'vocabulary',
+      addedAt: Date.now(),
+      mastered: false,
+      reviewCount: 0,
+      sessionId: ''
+    };
+  });
 }
 
 /** 单个单词查询（长按添加生词） */
 export async function lookupWord(
   word: string,
   context: string
-): Promise<{ word: string; meaning: string; errorType: string }> {
+): Promise<{ word: string; meaning: string; errorType: string; example?: string }> {
   const messages = [
     { role: 'system', content: SYSTEM_PROMPTS.lookupWord },
     { role: 'user', content: JSON.stringify({ word, context }) }
   ];
-  const content = await callDeepSeek(messages, 0.1, 150);
+  const content = await callDeepSeek(messages, 0.1, 200);
   return extractJson(content);
 }

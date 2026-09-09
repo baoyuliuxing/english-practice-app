@@ -60,6 +60,8 @@ export interface PracticeSession {
   diary?: DiaryResult;
   /** 该会话关联的日期（YYYY-MM-DD），用于日历索引 */
   date?: string;
+  /** 是否是通过日历补写过去的某天而创建的会话 */
+  isBackfill?: boolean;
 }
 
 /** ── 词汇本类型 ────────────────────────────────────────── */
@@ -69,8 +71,14 @@ export interface VocabItem {
   id: string;
   word: string;
   meaning: string;
+  /** 展示用例句：AI 从对话取的含该词的简化真实句 */
   example: string;
+  /** 用户原文（错句），供对照（可选，旧数据可能没有） */
+  original?: string;
+  /** AI 改正后的句子（完整版） */
   correctedExample: string;
+  /** 用于在例句中高亮定位的词（规范拼写，前端大小写不敏感匹配） */
+  highlight?: string;
   errorType: string;
   addedAt: number;
   mastered: boolean;

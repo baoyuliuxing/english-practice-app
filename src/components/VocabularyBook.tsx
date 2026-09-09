@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import type { VocabItem } from '@/types';
 import { speakEnglish } from '@/lib/speech';
+import { HighlightEnglish } from '@/components/HighlightEnglish';
 
 interface Props {
   vocabList: VocabItem[];
@@ -222,11 +223,24 @@ export function VocabularyBook({ vocabList, onToggleMastered, onDelete, onClose 
                       {item.meaning}
                     </p>
 
-                    {/* 例句 */}
-                    <p className="text-xs text-slate-500 line-clamp-2">
-                      <span className="line-through text-slate-600">{item.example}</span>
-                      <span className="text-slate-400"> → {item.correctedExample}</span>
-                    </p>
+                    {/* 例句（高亮单词出现位置） */}
+                    <div className="mb-1">
+                      <p className="text-[10px] text-slate-600 mb-0.5">例句</p>
+                      <p className="text-xs text-slate-300 leading-relaxed line-clamp-3">
+                        <HighlightEnglish
+                          text={item.example || item.correctedExample}
+                          highlight={item.highlight || item.word}
+                        />
+                      </p>
+                    </div>
+
+                    {/* 用户原句对照（可选，点击卡片翻转查看） */}
+                    {item.original && item.original.trim() && (
+                      <p className="text-[10px] text-slate-600/80 leading-snug mt-1 line-clamp-2">
+                        <span className="opacity-70">原句：</span>
+                        <span className="line-through decoration-slate-600/60">{item.original}</span>
+                      </p>
+                    )}
                   </div>
 
                   {/* 操作栏：大按钮，常显（手机无 hover） */}

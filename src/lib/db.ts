@@ -113,6 +113,24 @@ export function createSession(): PracticeSession {
   };
 }
 
+/** 创建用于"补写过去某天"的会话（createdAt 落该日 00:00，date 绑定那天） */
+export function createBackfillSession(dateStr: string): PracticeSession {
+  const ts = new Date(dateStr + 'T00:00:00').getTime();
+  const d = new Date(dateStr + 'T00:00:00');
+  const label = d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+  return {
+    id: `session-${ts}-${Math.random().toString(36).slice(2, 8)}`,
+    title: `补写 ${label}`,
+    createdAt: ts,
+    updatedAt: Date.now(),
+    date: dateStr,
+    messages: [],
+    correctedSentences: [],
+    diaryGenerated: false,
+    isBackfill: true
+  };
+}
+
 export function genMessageId(): string {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
