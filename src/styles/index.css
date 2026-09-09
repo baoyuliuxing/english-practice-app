@@ -65,6 +65,26 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+/* 标错句：用【】包围并高亮错误单词位置 */
+.mark-word-bracket {
+  position: relative;
+  background: rgba(251, 191, 36, 0.22);
+  color: #fbbf24;
+  font-weight: 600;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.mark-word-bracket::before {
+  content: '【';
+  color: #fbbf24;
+  margin-left: 1px;
+}
+.mark-word-bracket::after {
+  content: '】';
+  color: #fbbf24;
+  margin-right: 1px;
+}
+
 /* 打字指示器动画 */
 @keyframes blink {
   0%, 80%, 100% { opacity: 0.2; }

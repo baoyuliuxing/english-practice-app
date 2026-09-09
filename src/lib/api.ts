@@ -199,12 +199,34 @@ export async function extractVocabulary(
   return result.items.map((item: any) => {
     const word = String(item.word || '').trim();
     const aiExample = String(item.example || '').trim();
+
+    // 判断句子是否包含目标词（大小写不敏感、含词形尾缀 -s/-es/-ed/-ing 等）
+    const contains = (s?: string) => {
+      if (!s) return false;
+      let re: RegExp;
+      try {
+        re = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "(?:'s|s|es|ed|ing|d)?\\b", 'i');
+      } catch {
+        re = new RegExp(word, 'i');
+      }
+      return re.test(s);
+    };
+
+    // 例句源：必须含目标词，优先原句 → AI 简化句 → 改正句
+    const exampleSource = contains(original)
+      ? original
+      : contains(aiExample)
+        ? aiExample
+        : contains(corrected)
+          ? corrected
+          : aiExample || corrected || original;
+
     return {
       id: `vocab-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       word,
       meaning: item.meaning,
-      // 展示例句：优先 AI 给的简化句；没有则退回改正句
-      example: aiExample || corrected,
+      // 展示例句：保证含目标词（原句优先），便于一眼定位
+      example: exampleSource,
       original,
       correctedExample: corrected,
       highlight: word,

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import type { VocabItem } from '@/types';
 import { speakEnglish } from '@/lib/speech';
-import { HighlightEnglish } from '@/components/HighlightEnglish';
+import { MarkedEnglish } from '@/components/MarkedEnglish';
 
 interface Props {
   vocabList: VocabItem[];
@@ -223,23 +223,56 @@ export function VocabularyBook({ vocabList, onToggleMastered, onDelete, onClose 
                       {item.meaning}
                     </p>
 
-                    {/* 例句（高亮单词出现位置） */}
-                    <div className="mb-1">
-                      <p className="text-[10px] text-slate-600 mb-0.5">例句</p>
-                      <p className="text-xs text-slate-300 leading-relaxed line-clamp-3">
-                        <HighlightEnglish
-                          text={item.example || item.correctedExample}
-                          highlight={item.highlight || item.word}
-                        />
-                      </p>
-                    </div>
+                    {/* 原句（错句）—— 用【】标出错误词位置，完整展示 */}
+                    {(item.original && item.original.trim()) ? (
+                      <div className="mb-1.5">
+                        <p className="text-[10px] text-slate-600 mb-0.5">原句（你的句子）</p>
+                        <p className={`text-xs text-slate-300 leading-relaxed ${
+                          isFlipped ? '' : 'line-clamp-4'
+                        }`}>
+                          <MarkedEnglish text={item.original} word={item.highlight || item.word} />
+                        </p>
+                      </div>
+                    ) : (
+                      /* 旧数据可能没有 original —— 用 correctedExample 展示并标位置 */
+                      <div className="mb-1.5">
+                        <p className="text-[10px] text-slate-600 mb-0.5">例句</p>
+                        <p className={`text-xs text-slate-300 leading-relaxed ${
+                          isFlipped ? '' : 'line-clamp-4'
+                        }`}>
+                          <MarkedEnglish text={item.example || item.correctedExample} word={item.highlight || item.word} />
+                        </p>
+                      </div>
+                    )}
 
-                    {/* 用户原句对照（可选，点击卡片翻转查看） */}
-                    {item.original && item.original.trim() && (
-                      <p className="text-[10px] text-slate-600/80 leading-snug mt-1 line-clamp-2">
-                        <span className="opacity-70">原句：</span>
-                        <span className="line-through decoration-slate-600/60">{item.original}</span>
-                      </p>
+                    {/* 改后句 —— 【】标出改后词位置（若含该词） */}
+                    {item.correctedExample && item.correctedExample.trim() && item.correctedExample !== item.original && (
+                      <div className="mb-1">
+                        <p className="text-[10px] text-slate-600 mb-0.5">改后</p>
+                        <p className={`text-xs text-emerald-200/90 leading-relaxed ${
+                          isFlipped ? '' : 'line-clamp-3'
+                        }`}>
+                          <MarkedEnglish text={item.correctedExample} word={item.highlight || item.word} />
+                        </p>
+                      </div>
+                    )}
+
+                    {/* AI 补充例句：仅当含目标词且与上述不同时展示，作为简洁参考 */}
+                    {item.example && item.example.trim() && item.example !== item.correctedExample && item.example !== item.original && (
+                      (() => {
+                        const re = new RegExp(
+                          (item.highlight || item.word).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "(?:'s|s|es|ed|ing|d)?\\b",
+                          'i'
+                        );
+                        return re.test(item.example) ? (
+                          <p className={`text-[10px] text-slate-500 leading-relaxed ${
+                            isFlipped ? '' : 'line-clamp-2'
+                          }`}>
+                            <span className="text-slate-600">参考：</span>
+                            <MarkedEnglish text={item.example} word={item.highlight || item.word} />
+                          </p>
+                        ) : null;
+                      })()
                     )}
                   </div>
 
@@ -291,9 +324,13 @@ export function VocabularyBook({ vocabList, onToggleMastered, onDelete, onClose 
         <div className="px-4 py-2 border-t border-slate-800 text-center min-h-[32px] flex items-center justify-center">
           {speakError ? (
             <p className="text-[11px] text-amber-400 leading-snug">⚠ {speakError}</p>
+          ) : coverMode !== 'none' ? (
+            <p className="text-[11px] text-slate-500 leading-snug">
+              👆 点击卡片翻转查看遮盖内容；再点一次展开完整句子
+            </p>
           ) : (
             <p className="text-[11px] text-slate-600">
-              {coverMode !== 'none' ? '👆 点击卡片翻转查看被遮盖的内容' : '💡 使用遮盖模式进行背诵练习'}
+              📌 原句中【】标出错误词位置 · 点击卡片可展开完整句子
             </p>
           )}
         </div>
