@@ -1,4 +1,4 @@
-import type { PracticeSession, VocabItem, DiaryResult } from '@/types';
+import type { PracticeSession, VocabItem, DiaryEntry } from '@/types';
 import { saveSession, addVocabItem, formatDate } from '@/lib/db';
 
 /** 导出文件格式版本（未来结构变更时用于兼容） */
@@ -104,6 +104,14 @@ function parseJson(text: string): ParsedImport {
 /** 校验并修复导入的 session 对象 */
 function sanitizeSession(s: any): PracticeSession | null {
   if (!s || typeof s !== 'object' || !s.id) return null;
+  // 兼容旧版 diary 单字段，转为 diaries 数组
+  let diaries: DiaryEntry[] | undefined;
+  if (Array.isArray(s.diaries)) {
+    diaries = s.diaries.map(sanitizeDiary).filter(Boolean) as DiaryEntry[];
+  } else if (s.diary) {
+    const d = sanitizeDiary(s.diary);
+    if (d) diaries = [{ ...d, createdAt: Number(s.updatedAt) || Date.now() }];
+  }
   return {
     id: String(s.id),
     title: String(s.title || '导入的记录'),
@@ -111,16 +119,19 @@ function sanitizeSession(s: any): PracticeSession | null {
     updatedAt: Number(s.updatedAt) || Date.now(),
     messages: Array.isArray(s.messages) ? s.messages : [],
     correctedSentences: Array.isArray(s.correctedSentences) ? s.correctedSentences : [],
-    diaryGenerated: !!s.diaryGenerated || !!s.diary,
-    diary: s.diary ? sanitizeDiary(s.diary) : undefined,
+    diaryGenerated: !!s.diaryGenerated || !!s.diary || (diaries && diaries.length > 0),
+    diaries,
     date: s.date || formatDate(new Date(Number(s.createdAt) || Date.now()))
-  };
+  } as any;
 }
 
 /** 校验并修复导入的日记对象 */
-function sanitizeDiary(d: any): DiaryResult {
+function sanitizeDiary(d: any): DiaryEntry | null {
+  if (!d || typeof d !== 'object') return null;
+  const createdAt = Number(d.createdAt) || Date.now();
   return {
-    mode: 'diary',
+    createdAt,
+    mode: 'diary' as const,
     title: String(d.title || 'Untitled'),
     date: String(d.date || ''),
     body: String(d.body || ''),
@@ -182,6 +193,16 @@ function parsePlainTextDiary(text: string): PracticeSession {
   const now = Date.now();
   const wordCount = body.split(/\s+/).filter(Boolean).length;
 
+  const diary: DiaryEntry = {
+    createdAt: now,
+    mode: 'diary',
+    title,
+    date: dateLine,
+    body,
+    highlight,
+    wordCount
+  };
+
   return {
     id: `session-${now}-${Math.random().toString(36).slice(2, 8)}`,
     title: `${title}`,
@@ -190,16 +211,9 @@ function parsePlainTextDiary(text: string): PracticeSession {
     messages: [],
     correctedSentences: [],
     diaryGenerated: true,
-    diary: {
-      mode: 'diary',
-      title,
-      date: dateLine,
-      body,
-      highlight,
-      wordCount
-    },
+    diaries: [diary],
     date
-  };
+  } as any;
 }
 
 /** 把 "August 19, 2026" / "2026-08-19" / "2026/8/19" 解析为 YYYY-MM-DD */

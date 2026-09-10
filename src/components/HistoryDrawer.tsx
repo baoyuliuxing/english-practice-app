@@ -56,9 +56,14 @@ export function HistoryDrawer({ history, onLoad, onDelete, onClose }: Props) {
                           {s.correctedSentences.length} 句 ·
                           {s.diaryGenerated ? ' 已生成日记' : ' 未生成日记'}
                         </p>
-                        {s.diary && (
+                        {s.diaries && s.diaries.length > 0 && (
                           <p className="text-xs text-brand-400 mt-1 truncate">
-                            📝 {s.diary.title}
+                            📝 {s.diaries[s.diaries.length - 1].title}
+                            {s.diaries.length > 1 && (
+                              <span className="ml-1 text-[10px] text-slate-500">
+                                ({s.diaries.length} 版)
+                              </span>
+                            )}
                           </p>
                         )}
                       </button>

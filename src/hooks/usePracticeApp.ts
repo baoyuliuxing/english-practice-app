@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { PracticeSession, ChatMessage, VocabItem, UnifiedResult } from '@/types';
+import type { PracticeSession, ChatMessage, VocabItem, UnifiedResult, DiaryEntry } from '@/types';
 import * as db from '@/lib/db';
 import * as api from '@/lib/api';
 import { hasSentenceContainingWord } from '@/lib/clip';
@@ -215,11 +215,13 @@ export function usePracticeApp() {
 
     try {
       const diary = await api.generateDiary(session.correctedSentences);
+      const now = Date.now();
+      const newEntry: DiaryEntry = { ...diary, createdAt: now };
       const updatedSession: PracticeSession = {
         ...session,
         diaryGenerated: true,
-        diary,
-        updatedAt: Date.now()
+        diaries: [...(session.diaries || []), newEntry],
+        updatedAt: now
       };
       setSession(updatedSession);
       await db.saveSession(updatedSession);
@@ -333,11 +335,13 @@ export function usePracticeApp() {
       const diary = await api.generateDiary(backfillSession.correctedSentences);
       const dateObj = new Date((backfillDate || db.formatDate(new Date(backfillSession.createdAt))) + 'T00:00:00');
       const englishDate = dateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      const now = Date.now();
+      const newEntry: DiaryEntry = { ...diary, date: englishDate, createdAt: now };
       const updated: PracticeSession = {
         ...backfillSession,
         diaryGenerated: true,
-        diary: { ...diary, date: englishDate },
-        updatedAt: Date.now()
+        diaries: [...(backfillSession.diaries || []), newEntry],
+        updatedAt: now
       };
       setBackfillSession(updated);
       await db.saveSession(updated);
@@ -396,6 +400,17 @@ export function usePracticeApp() {
     await refreshVocab();
   }, [refreshVocab]);
 
+  /** 删除会话中的某版日记（按 createdAt） */
+  const deleteDiary = useCallback(async (sessionId: string, diaryCreatedAt: number) => {
+    const s = await db.deleteDiaryEntry(sessionId, diaryCreatedAt);
+    await refreshHistory();
+    // 若当前主会话也命中，同步本地
+    setSession(prev => {
+      if (!prev || prev.id !== sessionId) return prev;
+      return s ? { ...s } : prev;
+    });
+  }, [refreshHistory]);
+
   // 正在补例句的词（避免并发重复请求）
   const fixingRef = useRef<Set<string>>(new Set());
 
@@ -442,6 +457,7 @@ export function usePracticeApp() {
     refreshHistory,
     toggleVocabMastered,
     deleteVocabItem,
+    deleteDiary,
     refreshVocab,
     ensureVocabExample,
     // 补写会话

@@ -69,6 +69,7 @@ export default function App() {
     refreshHistory,
     toggleVocabMastered,
     deleteVocabItem,
+    deleteDiary,
     refreshVocab,
     ensureVocabExample,
     backfillDate,
@@ -162,14 +163,25 @@ export default function App() {
     }
   }, [addingWord, vocabList, session?.id, refreshVocab]);
 
-  // ── 自动滚动到底部（键盘弹起时也重新滚到底） ─────────────
+  // ── 智能滚动到底部：仅在「距底 ≤ 100px」或「刚发新消息」时滚动 ─────
+  // 目的：键盘弹起时若用户在中间/顶部浏览历史，不应被强制拉到底。
+
+  const prevMsgCountRef = useRef(0);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: 'smooth'
-      });
+    const el = scrollRef.current;
+    if (!el) return;
+    const cur = session?.messages.length || 0;
+    const grew = cur > prevMsgCountRef.current;
+    prevMsgCountRef.current = cur;
+
+    // 距底距离
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const nearBottom = distFromBottom <= 100;
+
+    // 触发条件：在底部 / 加载中 / 刚发新消息
+    if (nearBottom || loading || grew) {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     }
   }, [session?.messages, loading, keyboardHeight]);
 
@@ -200,10 +212,27 @@ export default function App() {
 
   // ── 渲染 ──────────────────────────────────────────────
 
-  if (session?.diaryGenerated && session?.diary) {
+  const latestDiary = session?.diaries && session.diaries.length > 0
+    ? session.diaries[session.diaries.length - 1]
+    : null;
+
+  if (session?.diaryGenerated && latestDiary) {
     return (
       <div className="flex flex-col app-height">
-        <DiaryView diary={session.diary} onNewSession={clearSession} onAddWord={handleAddWord} />
+        <DiaryView
+          diary={latestDiary}
+          diaries={session.diaries}
+          onNewSession={clearSession}
+          onAddWord={handleAddWord}
+          onDeleteDiary={async (createdAt) => {
+            await deleteDiary(session.id, createdAt);
+            // 删完最后一版时自动退出 DiaryView
+            const cur = await (await import('@/lib/db')).getSession(session.id);
+            if (cur && (cur.diaries?.length || 0) === 0) {
+              clearSession();
+            }
+          }}
+        />
       </div>
     );
   }
@@ -258,7 +287,7 @@ export default function App() {
 
         <h1 className="text-base font-semibold text-slate-100">
           英语练习
-          <span className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle">v2.7</span>
+          <span className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle">v2.8</span>
         </h1>
 
         <div className="flex items-center gap-2">
@@ -410,6 +439,9 @@ export default function App() {
           }}
           onSessionUpdated={() => {
             refreshHistory();
+          }}
+          onDeleteDiary={async (sessionId, diaryCreatedAt) => {
+            await deleteDiary(sessionId, diaryCreatedAt);
           }}
         />
       )}

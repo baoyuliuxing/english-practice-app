@@ -29,7 +29,8 @@ export function DataTransferModal({ sessions, vocabList, onImported, onClose }: 
   const fileRef = useRef<HTMLInputElement>(null);
 
   const diaryCount = useMemo(
-    () => sessions.filter(s => s.diaryGenerated && s.diary).length,
+    () =>
+      sessions.filter(s => s.diaryGenerated && s.diaries && s.diaries.length > 0).length,
     [sessions]
   );
 

@@ -54,14 +54,20 @@ export interface PracticeSession {
   messages: ChatMessage[];
   /** 所有已纠正的英文句子（用于生成日记） */
   correctedSentences: string[];
-  /** 是否已生成日记 */
+  /** 是否已生成日记（diaries 非空） */
   diaryGenerated: boolean;
-  /** 生成的日记 */
-  diary?: DiaryResult;
+  /** 生成的日记版本列表（按 createdAt 倒序；多次生成会保留多版） */
+  diaries?: DiaryEntry[];
   /** 该会话关联的日期（YYYY-MM-DD），用于日历索引 */
   date?: string;
   /** 是否是通过日历补写过去的某天而创建的会话 */
   isBackfill?: boolean;
+}
+
+/** 日记版本条目：在 DiaryResult 基础上增加生成时间戳 */
+export interface DiaryEntry extends DiaryResult {
+  /** 该版日记生成时间戳（毫秒） */
+  createdAt: number;
 }
 
 /** ── 词汇本类型 ────────────────────────────────────────── */

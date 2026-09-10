@@ -1,5 +1,5 @@
 import { openDB, type IDBPDatabase } from 'idb';
-import type { PracticeSession, VocabItem } from '@/types';
+import type { PracticeSession, VocabItem, DiaryEntry } from '@/types';
 
 const DB_NAME = 'english-practice-db';
 const DB_VERSION = 2; // 升级到 v2，新增词汇表 store
@@ -26,25 +26,48 @@ function getDB(): Promise<IDBPDatabase> {
 
 // ── 会话 CRUD ──────────────────────────────────────────
 
+/** 把旧版单 diary 字段迁移为 diaries 数组（兼容历史数据） */
+function normalizeSession(s: PracticeSession): PracticeSession {
+  if (!s) return s;
+  // 新版：diaries 字段应存在
+  // 旧版：可能含 diary 单字段（DiaryResult），无 diaries
+  const anyS = s as any;
+  if (!Array.isArray(s.diaries)) {
+    if (anyS.diary) {
+      const createdAt = s.updatedAt || Date.now();
+      s.diaries = [{ ...(anyS.diary as DiaryEntry), createdAt }];
+    } else {
+      s.diaries = [];
+    }
+  }
+  s.diaryGenerated = (s.diaries?.length || 0) > 0;
+  // 清理旧字段防止数据漂移
+  if ('diary' in anyS) delete anyS.diary;
+  return s;
+}
+
 export async function saveSession(session: PracticeSession): Promise<void> {
   const db = await getDB();
   // 自动关联日期
   if (!session.date) {
     session.date = formatDate(new Date(session.createdAt));
   }
+  // 字段规范化
+  normalizeSession(session);
   await db.put(STORE_SESSIONS, session);
 }
 
 export async function getSession(id: string): Promise<PracticeSession | undefined> {
   const db = await getDB();
-  return db.get(STORE_SESSIONS, id);
+  const s = await db.get(STORE_SESSIONS, id);
+  return s ? normalizeSession(s) : undefined;
 }
 
 export async function getAllSessions(): Promise<PracticeSession[]> {
   const db = await getDB();
   const all = await db.getAll(STORE_SESSIONS);
-  // 按更新时间倒序
-  return all.sort((a, b) => b.updatedAt - a.updatedAt);
+  // 规范化 + 按更新时间倒序
+  return all.map(normalizeSession).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 /** 按日期获取会话 */
@@ -62,6 +85,20 @@ export async function deleteSession(id: string): Promise<void> {
   for (const v of toDelete) {
     await deleteVocab(v.id);
   }
+}
+
+/** 删除会话中的某一版日记（按 createdAt） */
+export async function deleteDiaryEntry(
+  sessionId: string,
+  diaryCreatedAt: number
+): Promise<PracticeSession | null> {
+  const s = await getSession(sessionId);
+  if (!s) return null;
+  s.diaries = (s.diaries || []).filter(d => d.createdAt !== diaryCreatedAt);
+  s.diaryGenerated = (s.diaries.length || 0) > 0;
+  s.updatedAt = Date.now();
+  await saveSession(s);
+  return s;
 }
 
 // ── 词汇本 CRUD ────────────────────────────────────────
