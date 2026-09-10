@@ -57,6 +57,7 @@ export function BackfillChatView({
   }, [session.messages, loading]);
 
   const canGenerate = session.correctedSentences.length > 0;
+  const hasHistory = session.messages.length > 0;
 
   return (
     <div className="fixed inset-0 z-[70] flex flex-col bg-slate-900 animate-fade-in">
@@ -71,7 +72,9 @@ export function BackfillChatView({
         </button>
 
         <div className="text-center min-w-0">
-          <h2 className="text-sm font-semibold text-slate-100 truncate">💬 补写日记</h2>
+          <h2 className="text-sm font-semibold text-slate-100 truncate">
+            {hasHistory ? '💬 继续对话' : '💬 补写日记'}
+          </h2>
           <p className="text-[11px] text-slate-500 truncate">{dateDisplay}</p>
         </div>
 
@@ -108,6 +111,16 @@ export function BackfillChatView({
               <br />
               AI 会边纠错边陪你回忆，最后可一键整合成一篇英文日记。
             </p>
+          </div>
+        )}
+
+        {hasHistory && (
+          <div className="flex items-center gap-3 pt-1 pb-2">
+            <div className="flex-1 h-px bg-slate-700/60" />
+            <span className="text-[11px] text-slate-500 shrink-0">
+              📜 以下为此前对话记录
+            </span>
+            <div className="flex-1 h-px bg-slate-700/60" />
           </div>
         )}
 

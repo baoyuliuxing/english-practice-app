@@ -242,17 +242,16 @@ export function usePracticeApp() {
   // ── 补写会话：进入某一天的对话模式 ───────────────────────
 
   /**
-   * 进入某一天的补写对话模式。
-   * 若该天已有"未生成日记"的补写会话，则继续它；否则新建补写会话。
+   * 进入某一天的继续对话模式。
+   * 取该天最近更新的一条会话（不论是否补写、是否已生成日记），
+   * 把它已有的全部消息载入，用户可在下面直接接着聊。
+   * 该天没有任何会话时才新建补写会话。
    */
   const startBackfill = useCallback(async (dateStr: string) => {
     try {
       setBackfillError(null);
-      // 查找该天已存在、未生成日记的补写会话
       const byDate = await db.getSessionsByDate(dateStr);
-      const existing = byDate
-        .filter(s => s.isBackfill && !s.diaryGenerated)
-        .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      const existing = byDate.sort((a, b) => b.updatedAt - a.updatedAt)[0];
 
       const target = existing || db.createBackfillSession(dateStr);
       setBackfillDate(dateStr);
