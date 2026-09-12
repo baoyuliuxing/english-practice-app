@@ -50,6 +50,13 @@ import type { PracticeSession } from '@/types';
 function useKeyboardAvoid() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  /**
+   * 键盘弹起前的基准可用高度。
+   * 容器高度必须用「基准值 - 键盘高度」而不是「100dvh - 键盘高度」：
+   * 因为部分浏览器（荣耀）在键盘弹起时 100dvh 自身也会变成 418，
+   * 再减一次键盘高度就会收缩两遍，导致键盘与输入框之间出现大片空白。
+   */
+  const [baseHeight, setBaseHeight] = useState(0);
   /** 调试信息：暴露各数据源，便于排查 */
   const [kbDebug, setKbDebug] = useState({
     winH: 0,
@@ -123,6 +130,7 @@ function useKeyboardAvoid() {
         const { winH, vvH, docH } = readCurrent();
         const min = Math.min(...[winH, vvH || winH, docH].filter(v => v > 0));
         base = min;
+        setBaseHeight(min);
       }
       measure();
     };
@@ -131,6 +139,7 @@ function useKeyboardAvoid() {
     const initTimer = setTimeout(() => {
       const { winH, vvH, docH } = readCurrent();
       base = Math.min(...[winH, vvH || winH, docH].filter(v => v > 0));
+      setBaseHeight(base);
       setKbDebug(d => ({ ...d, base }));
     }, 300);
 
@@ -151,7 +160,7 @@ function useKeyboardAvoid() {
     };
   }, []);
 
-  return { inputRef, keyboardHeight, kbDebug };
+  return { inputRef, keyboardHeight, baseHeight, kbDebug };
 }
 
 export default function App() {
@@ -186,7 +195,7 @@ export default function App() {
     cancelBackfill
   } = usePracticeApp();
 
-  const { inputRef, keyboardHeight: kbH, kbDebug } = useKeyboardAvoid();
+  const { inputRef, keyboardHeight: kbH, baseHeight, kbDebug } = useKeyboardAvoid();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
@@ -414,9 +423,11 @@ export default function App() {
     <div
       className="flex flex-col max-w-2xl mx-auto relative app-container"
       style={
-        kbH > 0
-          ? // 键盘弹起：容器高度收缩，聊天滚动区随之变矮，内容自然上滑露出
-            { height: `calc(100dvh - ${kbH}px)` }
+        kbH > 0 && baseHeight > 0
+          ? // 键盘弹起：容器高度 = 基准高度 - 键盘高度。
+            // 不能写成 calc(100dvh - kbH)：荣耀浏览器在键盘弹起时 100dvh 自身
+            // 也会缩到 418，再减一次就会收缩两遍，导致键盘上方出现大片空白。
+            { height: `${Math.max(0, baseHeight - kbH)}px` }
           : undefined
       }
     >
@@ -465,7 +476,7 @@ export default function App() {
 
         <h1 className="text-base font-semibold text-slate-100">
           英语练习
-          <span className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle">v3.7</span>
+          <span className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle">v3.8</span>
         </h1>
 
         <div className="flex items-center gap-2">
