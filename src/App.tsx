@@ -312,11 +312,20 @@ export default function App() {
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     const nearBottom = distFromBottom <= 180;
 
-    // ① AI 刚回复完成：不执行任何滚动，冻结当前视口位置。
-    //    输出阶段（loading）③ 分支已持续跟随滚到底，回复插入时 scrollTop 不变，
-    //    视口正好停在「用户消息 + AI 回复开头（纠正/解析）」处，保持不动即可从容阅读。
-    //    这里必须显式 return：否则会落入 ③ 分支被 grew=true 强制滚到底、甩到输入框。
-    const justFinished = wasLoading && !loading && grew;
+    // ① AI 回复完成：冻结视口，不执行任何滚动。
+    //    关键：setSession（消息插入）与 setLoading(false) 之间隔着 await，
+    //    必然分成两次渲染，任何单一批次的判定都会漏：
+    //      · 渲染 X：grew=true 且 loading 仍 true → 此批绝不能滚（③ 会因 loading 滚到底）
+    //      · 渲染 Y：loading=false 但 grew=false → 此批也要吞掉
+    //    因此用 wasLoading + 最后一条消息 role 覆盖两种批次：
+    //      F1: wasLoading && !loading                    → loading 结束的渲染
+    //      F2: wasLoading && grew && lastIsAssistant     → loading 期间回复已插入的渲染
+    //    wasLoading 同时排除「用户发消息」「载入历史会话」这两种 grew
+    //    （wasLoading=false，保持原有滚到底行为）。
+    const lastMsg = grew && session ? session.messages[cur - 1] : null;
+    const lastIsAssistant = lastMsg ? lastMsg.role === 'assistant' : false;
+    const justFinished =
+      (wasLoading && !loading) || (wasLoading && grew && lastIsAssistant);
     if (justFinished) {
       return;
     }
@@ -452,7 +461,7 @@ export default function App() {
 
         <h1 className="text-base font-semibold text-slate-100">
           英语练习
-          <span className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle">v4.0</span>
+          <span className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle">v4.1</span>
         </h1>
 
         <div className="flex items-center gap-2">
