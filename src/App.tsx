@@ -57,15 +57,6 @@ function useKeyboardAvoid() {
    * 再减一次键盘高度就会收缩两遍，导致键盘与输入框之间出现大片空白。
    */
   const [baseHeight, setBaseHeight] = useState(0);
-  /** 调试信息：暴露各数据源，便于排查 */
-  const [kbDebug, setKbDebug] = useState({
-    winH: 0,
-    vvH: 0,
-    docH: 0,
-    base: 0,
-    kb: 0,
-    source: '-'
-  });
 
   useEffect(() => {
     /** 键盘弹起前的基准可用高度 */
@@ -99,13 +90,11 @@ function useKeyboardAvoid() {
       }
 
       if (base === 0) {
-        setKbDebug({ winH, vvH, docH, base: 0, kb: 0, source: cur.s });
         return;
       }
 
       const kb = base - cur.v;
       setKeyboardHeight(kb > 60 ? kb : 0);
-      setKbDebug({ winH, vvH, docH, base, kb, source: cur.s });
     };
 
     const onFocusIn = (e: FocusEvent) => {
@@ -121,7 +110,6 @@ function useKeyboardAvoid() {
 
     const onFocusOut = () => {
       setKeyboardHeight(0);
-      setKbDebug(d => ({ ...d, kb: 0 }));
     };
 
     const onResize = () => {
@@ -140,7 +128,6 @@ function useKeyboardAvoid() {
       const { winH, vvH, docH } = readCurrent();
       base = Math.min(...[winH, vvH || winH, docH].filter(v => v > 0));
       setBaseHeight(base);
-      setKbDebug(d => ({ ...d, base }));
     }, 300);
 
     document.addEventListener('focusin', onFocusIn);
@@ -160,7 +147,7 @@ function useKeyboardAvoid() {
     };
   }, []);
 
-  return { inputRef, keyboardHeight, baseHeight, kbDebug };
+  return { inputRef, keyboardHeight, baseHeight };
 }
 
 export default function App() {
@@ -195,7 +182,7 @@ export default function App() {
     cancelBackfill
   } = usePracticeApp();
 
-  const { inputRef, keyboardHeight: kbH, baseHeight, kbDebug } = useKeyboardAvoid();
+  const { inputRef, keyboardHeight: kbH, baseHeight } = useKeyboardAvoid();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
@@ -465,7 +452,7 @@ export default function App() {
 
         <h1 className="text-base font-semibold text-slate-100">
           英语练习
-          <span className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle">v3.9</span>
+          <span className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle">v4.0</span>
         </h1>
 
         <div className="flex items-center gap-2">
@@ -544,16 +531,6 @@ export default function App() {
           )}
         </>
       )}
-
-      {/* ── 键盘调试面板（临时，排查用） ─────────────────── */}
-      <div className="fixed top-16 right-1 z-[95] rounded-lg bg-black/90 border border-amber-500/50 px-2 py-1.5 text-[10px] text-amber-300 font-mono leading-snug pointer-events-none">
-        <div>winH {kbDebug.winH}</div>
-        <div>vvH {kbDebug.vvH.toFixed(0)}</div>
-        <div>docH {kbDebug.docH}</div>
-        <div>base {kbDebug.base}</div>
-        <div className="text-cyan-300">kb {kbDebug.kb.toFixed(0)}</div>
-        <div className="text-emerald-300">src {kbDebug.source}</div>
-      </div>
 
       {/* ── Toast 提示 ──────────────────────────────────── */}
       {toast && (

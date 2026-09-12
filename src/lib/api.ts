@@ -1,5 +1,5 @@
 import type { UnifiedResult, DiaryResult, VocabItem } from '@/types';
-import { getApiKey } from '@/lib/apiKey';
+import { getApiKey, sanitizeApiKey } from '@/lib/apiKey';
 
 /**
  * 纯前端直连 DeepSeek API
@@ -135,25 +135,41 @@ async function callDeepSeek(
   temperature: number,
   maxTokens: number
 ): Promise<any> {
-  const apiKey = getApiKey();
-  if (!apiKey) {
+  const rawKey = getApiKey();
+  if (!rawKey) {
     throw new Error('请先在设置中配置 DeepSeek API Key');
   }
+  // 二次清洗：确保请求头只含 ISO-8859-1 字符，
+  // 否则 fetch 会抛 "String contains non ISO-8859-1 code point"
+  const apiKey = sanitizeApiKey(rawKey);
+  if (!apiKey) {
+    throw new Error('API Key 含非法字符，请在设置中重新填写');
+  }
 
-  const res = await fetch(DEEPSEEK_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages,
-      temperature,
-      max_tokens: maxTokens,
-      stream: false
-    })
-  });
+  let res: Response;
+  try {
+    res = await fetch(DEEPSEEK_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages,
+        temperature,
+        max_tokens: maxTokens,
+        stream: false
+      })
+    });
+  } catch (err: any) {
+    // 请求头非法 / 网络不可达等底层错误，转成可读提示
+    const msg = String(err?.message || '');
+    if (msg.includes('ISO-8859-1')) {
+      throw new Error('API Key 含非法字符，请在设置中重新填写');
+    }
+    throw new Error('网络请求失败，请检查网络后重试');
+  }
 
   if (!res.ok) {
     const errText = await res.text();
