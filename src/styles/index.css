@@ -14,12 +14,13 @@ html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
-  /* 关键：防止键盘弹起时页面整体滚动 */
-  overflow: hidden;
-  position: fixed;
   width: 100%;
-  top: 0;
-  left: 0;
+  /* 注意：不再对外层做 position:fixed + overflow:hidden 的强锁。
+   * 之前锁死页面滚动，导致部分浏览器（华为/UC 等）无法执行
+   * "滚动让输入框可见"的原生行为，转而强行整体上移页面，
+   * 与 JS 的补偿叠加后出现各种错位。
+   * 现在让外层保持可滚动，把滚动控制交给浏览器本身。 */
+  overflow-x: hidden;
 }
 
 /* 应用主容器高度：
@@ -33,19 +34,11 @@ html, body, #root {
   height: 100dvh;
 }
 
-/* 应用主容器：固定在视口顶部，高度由 JS 按 visualViewport.height 动态设置。
- * 这样无论浏览器是否支持 interactive-widget=resizes-content，
- * 键盘弹起时容器都会变矮，输入框始终位于键盘上方，聊天区底部不会被遮挡。 */
+/* 应用主容器：撑满视口，内部自己管理布局 */
 .app-container {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
   margin: 0 auto;
   overflow: hidden;
   background: #0f172a;
-  /* translateY 推到上方时不露出 body */
-  will-change: transform;
 }
 
 /* 安全区补偿（viewport-fit=cover 时内容会延伸到刘海/Home Indicator 之下） */

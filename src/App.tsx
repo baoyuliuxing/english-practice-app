@@ -18,103 +18,60 @@ import { addVocabItem, genVocabId } from '@/lib/db';
 import type { PracticeSession } from '@/types';
 
 /**
- * 键盘弹起处理 Hook
+ * 键盘弹起处理 Hook —— 浏览器原生滚动方案
  *
- * 兼容性最好的做法：直接读取 visualViewport.height 作为容器高度。
- *  - Chrome 108+（interactive-widget=resizes-content）：布局视口自动压缩，
- *    vv.height 与 innerHeight 同步缩小，容器跟随 → 表现一致
- *  - 华为/UC/旧 Chrome 等（键盘只在视觉层，布局视口不变）：
- *    vv.height 仍会缩小 → 容器高度跟随缩小 → 输入框始终在键盘上方，
- *    聊天区底部也不会被键盘盖住
+ * 实测结论（华为/荣耀浏览器）：
+ *   - visualViewport.height 与 window.innerHeight 在键盘弹起时【都不变化】，
+ *     JS 根本无法推算键盘高度；
+ *   - 此前用 transform 主动上推容器，又会与浏览器自身的位置调整【叠加】，
+ *     导致"推过头"（内容被推出屏幕）。
  *
- * 返回 { viewportHeight, keyboardHeight }：
- *  - viewportHeight：当前可视视口高度（没用 visualViewport 时为 0，交给 CSS 兜底）
- *  - keyboardHeight：键盘占用的高度（用于判断"键盘刚弹起"）
+ * 因此改为：JS 不自己推，而是让浏览器用自己掌握的"可视区（含键盘）"信息处理：
+ *   1. 放开外层容器的 position:fixed / overflow:hidden 锁（见 index.css），
+ *      让浏览器能够执行"滚动让聚焦元素可见"的原生行为；
+ *   2. 输入框聚焦后，延时调用 input.scrollIntoView({ block: 'end' })，
+ *      让浏览器把输入框滚到可视区底部 —— 也就是键盘上方。
  */
 function useKeyboardAvoid() {
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  /** 调试用：暴露探测中间量 */
-  const [dbg, setDbg] = useState({ winH: 0, vvH: 0, base: 0, kb: 0 });
+  /** 键盘是否可能处于弹起状态 */
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
 
   useEffect(() => {
-    let raf = 0;
     const timers: any[] = [];
-    /** 键盘弹起前的"基准窗口高度"（即键盘未占用时的完整可视高度） */
-    let baseHeight = 0;
 
-    const measure = () => {
+    const bringInputIntoView = () => {
       const ta = inputRef.current;
-      const winH = window.innerHeight;
-      const vv = window.visualViewport;
-      const vvH = vv ? vv.height : winH;
-
-      if (!ta || document.activeElement !== ta) {
-        baseHeight = 0;
-        setKeyboardHeight(0);
-        setDbg({ winH, vvH, base: 0, kb: 0 });
-        return;
-      }
-
-      const visibleH = Math.min(winH, vvH);
-
-      if (baseHeight === 0 || visibleH > baseHeight) {
-        baseHeight = visibleH;
-        setKeyboardHeight(0);
-        setDbg({ winH, vvH, base: baseHeight, kb: 0 });
-        return;
-      }
-
-      const kb = baseHeight - visibleH;
-      setKeyboardHeight(kb > 40 ? kb : 0);
-      setDbg({ winH, vvH, base: baseHeight, kb });
+      if (!ta) return;
+      if (document.activeElement !== ta) return;
+      // 交给浏览器：它知道键盘占据的可视区，会滚到正确位置
+      ta.scrollIntoView({ block: 'end', behavior: 'smooth' });
     };
 
     const onFocusIn = (e: FocusEvent) => {
       const t = e.target as HTMLElement | null;
       if (!t || (t.tagName !== 'TEXTAREA' && t.tagName !== 'INPUT')) return;
-      const vv = window.visualViewport;
-      baseHeight = Math.min(window.innerHeight, vv ? vv.height : window.innerHeight);
-      [80, 180, 300, 450, 650, 900].forEach(ms => {
-        timers.push(setTimeout(measure, ms));
+      setKeyboardOpen(true);
+      // 键盘动画有延迟，分多个时间点触发，确保最终停在正确位置
+      [120, 300, 550, 800, 1100].forEach(ms => {
+        timers.push(setTimeout(bringInputIntoView, ms));
       });
     };
 
     const onFocusOut = () => {
-      timers.push(
-        setTimeout(() => {
-          baseHeight = 0;
-          setKeyboardHeight(0);
-        }, 250)
-      );
-    };
-
-    const schedule = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(measure);
+      setKeyboardOpen(false);
     };
 
     document.addEventListener('focusin', onFocusIn);
     document.addEventListener('focusout', onFocusOut);
-    window.addEventListener('resize', schedule);
-    const vv = window.visualViewport;
-    if (vv) {
-      vv.addEventListener('resize', schedule);
-    }
-
     return () => {
       timers.forEach(t => clearTimeout(t));
-      cancelAnimationFrame(raf);
       document.removeEventListener('focusin', onFocusIn);
       document.removeEventListener('focusout', onFocusOut);
-      window.removeEventListener('resize', schedule);
-      if (vv) {
-        vv.removeEventListener('resize', schedule);
-      }
     };
   }, []);
 
-  return { inputRef, keyboardHeight, dbg };
+  return { inputRef, keyboardOpen };
 }
 
 export default function App() {
@@ -149,8 +106,7 @@ export default function App() {
     cancelBackfill
   } = usePracticeApp();
 
-  const { inputRef, keyboardHeight, dbg } = useKeyboardAvoid();
-  const [showDebug, setShowDebug] = useState(false);
+  const { inputRef, keyboardOpen } = useKeyboardAvoid();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
@@ -241,7 +197,7 @@ export default function App() {
 
   const prevMsgCountRef = useRef(0);
   const prevLoadingRef = useRef(false);
-  const prevKeyboardRef = useRef(0);
+  const prevKeyboardOpenRef = useRef(false);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -250,16 +206,14 @@ export default function App() {
     const cur = session?.messages.length || 0;
     const grew = cur > prevMsgCountRef.current;
     const wasLoading = prevLoadingRef.current;
-    const keyboardJustOpened = keyboardHeight > 0 && prevKeyboardRef.current === 0;
+    const keyboardJustOpened = keyboardOpen && !prevKeyboardOpenRef.current;
     prevMsgCountRef.current = cur;
     prevLoadingRef.current = loading;
-    prevKeyboardRef.current = keyboardHeight;
+    prevKeyboardOpenRef.current = keyboardOpen;
 
-    // 距底距离（键盘动画期间 clientHeight 会抖动，留足余量）
+    // 距底距离
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     const nearBottom = distFromBottom <= 180;
-    // 键盘刚弹起时给更宽松的判定，避免"差一点点就不跟随"
-    const nearBottomForKeyboard = distFromBottom <= 260;
 
     // ① AI 刚回复完成：把最后一条 assistant 消息滚到可视区顶部
     const justFinished = wasLoading && !loading && grew;
@@ -280,9 +234,9 @@ export default function App() {
       return;
     }
 
-    // ② 键盘刚弹起：仅在接近底部时跟随
+    // ② 键盘刚弹起：仅在接近底部时跟随（避免打断用户浏览历史）
     if (keyboardJustOpened) {
-      if (nearBottomForKeyboard) {
+      if (nearBottom) {
         el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
       }
       return;
@@ -292,7 +246,7 @@ export default function App() {
     if (nearBottom || loading || grew) {
       el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     }
-  }, [session?.messages, loading, keyboardHeight]);
+  }, [session?.messages, loading, keyboardOpen]);
 
   const handleEndSession = () => setShowEndConfirm(true);
 
@@ -347,13 +301,7 @@ export default function App() {
   }
 
   return (
-    <div
-      className="flex flex-col max-w-2xl mx-auto relative app-height app-container"
-      style={{
-        transform: keyboardHeight > 0 ? `translateY(-${keyboardHeight}px)` : undefined,
-        transition: 'transform 0.18s ease-out'
-      }}
-    >
+    <div className="flex flex-col max-w-2xl mx-auto relative app-height app-container">
       {/* ── 顶部栏 ──────────────────────────────────────── */}
       <header className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/95 backdrop-blur-sm safe-top">
         <div className="flex items-center gap-1">
@@ -399,12 +347,7 @@ export default function App() {
 
         <h1 className="text-base font-semibold text-slate-100">
           英语练习
-          <span
-            onClick={() => setShowDebug(d => !d)}
-            className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle select-none"
-          >
-            v3.3
-          </span>
+          <span className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle">v3.4</span>
         </h1>
 
         <div className="flex items-center gap-2">
@@ -482,17 +425,6 @@ export default function App() {
             <InputBar loading={loading} onSend={sendMessage} inputRef={inputRef} />
           )}
         </>
-      )}
-
-      {/* ── 调试面板（点版本号开关） ─────────────────────── */}
-      {showDebug && (
-        <div className="fixed top-14 left-2 z-[90] rounded-lg bg-black/90 border border-amber-500/40 px-3 py-2 text-[10px] text-amber-300 font-mono leading-relaxed pointer-events-none">
-          <div>winH: {dbg.winH}</div>
-          <div>vvH: {dbg.vvH.toFixed(0)}</div>
-          <div>base: {dbg.base}</div>
-          <div>kb: {dbg.kb.toFixed(0)}</div>
-          <div className="text-cyan-300">推: {keyboardHeight.toFixed(0)}</div>
-        </div>
       )}
 
       {/* ── Toast 提示 ──────────────────────────────────── */}
