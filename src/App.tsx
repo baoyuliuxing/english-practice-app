@@ -278,11 +278,10 @@ export default function App() {
 
   // ── 智能滚动 ────────────────────────────────────────────
   // 规则：
-  //  1) 发送新消息后（消息数增长）→ 滚到底，让用户看到自己发的 + 等待 AI
-  //  2) AI 回复完成（loading true→false，且消息数再增长）→ 滚到「这条回复的顶部」，
-  //     让用户从回复第一行开始阅读，而不是被甩到最底部
-  //  3) 键盘弹起 / 其他重渲染 → 只有用户在「接近底部」时才跟随滚动
-  //     （阈值放宽到 180px，避免差一点点就不跟随的情况）
+  //  1) AI 输出阶段（loading）→ 跟随滚到底，持续看到最新输出内容
+  //  2) AI 回复完成 → 不滚动，冻结视口位置：视口停在用户消息 + 纠正/解析开头处，
+  //     不强制跳转到消息顶部或底部输入框
+  //  3) 键盘弹起 / 其他重渲染 → 只有用户原本在底部时才跟随滚动
 
   const prevMsgCountRef = useRef(0);
   const prevLoadingRef = useRef(false);
@@ -326,22 +325,12 @@ export default function App() {
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     const nearBottom = distFromBottom <= 180;
 
-    // ① AI 刚回复完成：把最后一条 assistant 消息滚到可视区顶部
+    // ① AI 刚回复完成：不执行任何滚动，冻结当前视口位置。
+    //    输出阶段（loading）③ 分支已持续跟随滚到底，回复插入时 scrollTop 不变，
+    //    视口正好停在「用户消息 + AI 回复开头（纠正/解析）」处，保持不动即可从容阅读。
+    //    这里必须显式 return：否则会落入 ③ 分支被 grew=true 强制滚到底、甩到输入框。
     const justFinished = wasLoading && !loading && grew;
     if (justFinished) {
-      // 等一帧，确保新消息的 DOM 与图片/样式都已布局完成
-      requestAnimationFrame(() => {
-        const el2 = scrollRef.current;
-        if (!el2) return;
-        const nodes = el2.querySelectorAll<HTMLElement>('[data-msg-index]');
-        const last = nodes[nodes.length - 1];
-        if (!last) return;
-        // 用 getBoundingClientRect 计算相对滚动容器的真实偏移，避免 offsetParent 陷阱
-        const elRect = el2.getBoundingClientRect();
-        const lastRect = last.getBoundingClientRect();
-        const targetTop = el2.scrollTop + (lastRect.top - elRect.top) - 12;
-        el2.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
-      });
       return;
     }
 
@@ -476,7 +465,7 @@ export default function App() {
 
         <h1 className="text-base font-semibold text-slate-100">
           英语练习
-          <span className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle">v3.8</span>
+          <span className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle">v3.9</span>
         </h1>
 
         <div className="flex items-center gap-2">
