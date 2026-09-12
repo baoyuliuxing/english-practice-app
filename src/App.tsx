@@ -34,47 +34,61 @@ import type { PracticeSession } from '@/types';
 function useKeyboardAvoid() {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  /** 调试用：暴露探测中间量 */
+  const [dbg, setDbg] = useState({ winH: 0, vvH: 0, base: 0, kb: 0 });
 
   useEffect(() => {
     let raf = 0;
-    let timer1: any = 0;
-    let timer2: any = 0;
-    let timer3: any = 0;
+    const timers: any[] = [];
+    /** 键盘弹起前的"基准窗口高度"（即键盘未占用时的完整可视高度） */
+    let baseHeight = 0;
 
     const measure = () => {
       const ta = inputRef.current;
-      if (!ta) {
-        setKeyboardHeight(0);
-        return;
-      }
-      // 是否聚焦
-      if (document.activeElement !== ta) {
-        setKeyboardHeight(0);
-        return;
-      }
-      const rect = ta.getBoundingClientRect();
       const winH = window.innerHeight;
-      const overflow = rect.bottom - winH;
-      // 如果 textarea 底部还在窗口内（≤0），说明没被键盘盖住
-      setKeyboardHeight(overflow > 20 ? overflow : 0);
+      const vv = window.visualViewport;
+      const vvH = vv ? vv.height : winH;
+
+      if (!ta || document.activeElement !== ta) {
+        baseHeight = 0;
+        setKeyboardHeight(0);
+        setDbg({ winH, vvH, base: 0, kb: 0 });
+        return;
+      }
+
+      const visibleH = Math.min(winH, vvH);
+
+      if (baseHeight === 0 || visibleH > baseHeight) {
+        baseHeight = visibleH;
+        setKeyboardHeight(0);
+        setDbg({ winH, vvH, base: baseHeight, kb: 0 });
+        return;
+      }
+
+      const kb = baseHeight - visibleH;
+      setKeyboardHeight(kb > 40 ? kb : 0);
+      setDbg({ winH, vvH, base: baseHeight, kb });
     };
 
     const onFocusIn = (e: FocusEvent) => {
       const t = e.target as HTMLElement | null;
       if (!t || (t.tagName !== 'TEXTAREA' && t.tagName !== 'INPUT')) return;
-      // 多次测量，捕获键盘动画过程中各个阶段
-      timer1 = setTimeout(measure, 100);
-      timer2 = setTimeout(measure, 300);
-      timer3 = setTimeout(measure, 600);
+      const vv = window.visualViewport;
+      baseHeight = Math.min(window.innerHeight, vv ? vv.height : window.innerHeight);
+      [80, 180, 300, 450, 650, 900].forEach(ms => {
+        timers.push(setTimeout(measure, ms));
+      });
     };
 
     const onFocusOut = () => {
-      setTimeout(() => {
-        setKeyboardHeight(0);
-      }, 200);
+      timers.push(
+        setTimeout(() => {
+          baseHeight = 0;
+          setKeyboardHeight(0);
+        }, 250)
+      );
     };
 
-    // 视觉视口变化时（支持它的浏览器）也测量一次
     const schedule = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(measure);
@@ -89,9 +103,7 @@ function useKeyboardAvoid() {
     }
 
     return () => {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-      clearTimeout(timer3);
+      timers.forEach(t => clearTimeout(t));
       cancelAnimationFrame(raf);
       document.removeEventListener('focusin', onFocusIn);
       document.removeEventListener('focusout', onFocusOut);
@@ -102,7 +114,7 @@ function useKeyboardAvoid() {
     };
   }, []);
 
-  return { inputRef, keyboardHeight };
+  return { inputRef, keyboardHeight, dbg };
 }
 
 export default function App() {
@@ -137,7 +149,7 @@ export default function App() {
     cancelBackfill
   } = usePracticeApp();
 
-  const { inputRef, keyboardHeight } = useKeyboardAvoid();
+  const { inputRef, keyboardHeight, dbg } = useKeyboardAvoid();
   const [showDebug, setShowDebug] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
@@ -391,7 +403,7 @@ export default function App() {
             onClick={() => setShowDebug(d => !d)}
             className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle select-none"
           >
-            v3.2
+            v3.3
           </span>
         </h1>
 
@@ -474,11 +486,12 @@ export default function App() {
 
       {/* ── 调试面板（点版本号开关） ─────────────────────── */}
       {showDebug && (
-        <div className="fixed top-14 left-2 z-[90] rounded-lg bg-black/85 border border-amber-500/40 px-3 py-2 text-[10px] text-amber-300 font-mono leading-relaxed pointer-events-none">
-          <div>innerH: {typeof window !== 'undefined' ? window.innerHeight : 0}</div>
-          <div>ta.bottom: {inputRef.current ? inputRef.current.getBoundingClientRect().bottom.toFixed(0) : '-'}</div>
-          <div>kbH (推上): {keyboardHeight.toFixed(0)}</div>
-          <div>msgs: {session?.messages.length ?? 0}</div>
+        <div className="fixed top-14 left-2 z-[90] rounded-lg bg-black/90 border border-amber-500/40 px-3 py-2 text-[10px] text-amber-300 font-mono leading-relaxed pointer-events-none">
+          <div>winH: {dbg.winH}</div>
+          <div>vvH: {dbg.vvH.toFixed(0)}</div>
+          <div>base: {dbg.base}</div>
+          <div>kb: {dbg.kb.toFixed(0)}</div>
+          <div className="text-cyan-300">推: {keyboardHeight.toFixed(0)}</div>
         </div>
       )}
 
