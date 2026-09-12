@@ -278,6 +278,8 @@ export default function App() {
   const prevMsgCountRef = useRef(0);
   const prevLoadingRef = useRef(false);
   const prevKeyboardOpenRef = useRef(false);
+  /** 上一次的键盘高度：用于判断键盘是否仍在变化（弹起/收起动画中） */
+  const prevKbHRef = useRef(0);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -287,9 +289,12 @@ export default function App() {
     const grew = cur > prevMsgCountRef.current;
     const wasLoading = prevLoadingRef.current;
     const keyboardJustOpened = kbH > 0 && !prevKeyboardOpenRef.current;
+    /** 键盘高度发生变化（弹起动画中高度会逐步增大，收起时逐步减小） */
+    const kbChanged = kbH !== prevKbHRef.current;
     prevMsgCountRef.current = cur;
     prevLoadingRef.current = loading;
     prevKeyboardOpenRef.current = kbH > 0;
+    prevKbHRef.current = kbH;
 
     // 距底距离
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
@@ -314,11 +319,16 @@ export default function App() {
       return;
     }
 
-    // ② 键盘刚弹起：仅在接近底部时跟随（避免打断用户浏览历史）
-    if (keyboardJustOpened) {
-      if (nearBottom) {
-        el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-      }
+    // ② 键盘刚弹起 / 键盘高度仍在变化：容器高度被收缩（100dvh → 100dvh - kbH），
+    //    此时 scrollTop 不变但可视区变矮，distFromBottom 会被动放大，
+    //    nearBottom 判定不可靠。这里直接滚到底，让最新消息露出在键盘上方。
+    //    等一帧让容器高度收缩（React 已同步渲染，但浏览器布局需要一帧）。
+    if (keyboardJustOpened || kbChanged) {
+      requestAnimationFrame(() => {
+        const el2 = scrollRef.current;
+        if (!el2) return;
+        el2.scrollTo({ top: el2.scrollHeight, behavior: 'smooth' });
+      });
       return;
     }
 
@@ -435,7 +445,7 @@ export default function App() {
 
         <h1 className="text-base font-semibold text-slate-100">
           英语练习
-          <span className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle">v3.5</span>
+          <span className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle">v3.6</span>
         </h1>
 
         <div className="flex items-center gap-2">
