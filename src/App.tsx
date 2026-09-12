@@ -280,6 +280,23 @@ export default function App() {
   const prevKeyboardOpenRef = useRef(false);
   /** 上一次的键盘高度：用于判断键盘是否仍在变化（弹起/收起动画中） */
   const prevKbHRef = useRef(0);
+  /** 用户是否正停留在底部（由 scroll 事件实时维护，不受容器高度突变干扰） */
+  const atBottomRef = useRef(true);
+
+  // 实时追踪「用户是否在底部」。
+  // 关键：这个值只在用户真正滚动时更新，键盘导致的容器高度突变不会影响它，
+  // 因此键盘弹起时可以用它判断「用户原本是否在底部」。
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+      atBottomRef.current = dist <= 60;
+    };
+    onScroll();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [session?.id]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -289,7 +306,7 @@ export default function App() {
     const grew = cur > prevMsgCountRef.current;
     const wasLoading = prevLoadingRef.current;
     const keyboardJustOpened = kbH > 0 && !prevKeyboardOpenRef.current;
-    /** 键盘高度发生变化（弹起动画中高度会逐步增大，收起时逐步减小） */
+    /** 键盘高度是否发生变化（弹起动画中高度会逐步增大，收起时逐步减小） */
     const kbChanged = kbH !== prevKbHRef.current;
     prevMsgCountRef.current = cur;
     prevLoadingRef.current = loading;
@@ -319,15 +336,18 @@ export default function App() {
       return;
     }
 
-    // ② 键盘刚弹起 / 键盘高度仍在变化：容器高度被收缩（100dvh → 100dvh - kbH），
-    //    此时 scrollTop 不变但可视区变矮，distFromBottom 会被动放大，
-    //    nearBottom 判定不可靠。这里直接滚到底，让最新消息露出在键盘上方。
-    //    等一帧让容器高度收缩（React 已同步渲染，但浏览器布局需要一帧）。
+    // ② 键盘刚弹起 / 键盘高度仍在变化：容器高度被收缩（100dvh → 100dvh - kbH）。
+    //    注意：此时 distFromBottom 已被动放大，不能再用 nearBottom 判断。
+    //    改用 Scroll 事件实时维护的 atBottomRef（用户真实滚动位置）：
+    //      · 原本在底部     → 跟着滚到底，让最新消息露出在键盘上方
+    //      · 原本在看历史   → 保持视觉位置不动，不打断阅读
     if (keyboardJustOpened || kbChanged) {
       requestAnimationFrame(() => {
         const el2 = scrollRef.current;
         if (!el2) return;
-        el2.scrollTo({ top: el2.scrollHeight, behavior: 'smooth' });
+        if (atBottomRef.current) {
+          el2.scrollTo({ top: el2.scrollHeight, behavior: 'auto' });
+        }
       });
       return;
     }
@@ -445,7 +465,7 @@ export default function App() {
 
         <h1 className="text-base font-semibold text-slate-100">
           英语练习
-          <span className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle">v3.6</span>
+          <span className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle">v3.7</span>
         </h1>
 
         <div className="flex items-center gap-2">
@@ -488,7 +508,7 @@ export default function App() {
         <WelcomeScreen onStart={handleStart} />
       ) : (
         <>
-          <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3 chat-scroll-area">
+          <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3 chat-scroll-area">
             {session.messages.length === 0 && (
               <div className="text-center py-8">
                 <p className="text-sm text-slate-500 mb-1">
@@ -520,7 +540,7 @@ export default function App() {
           </div>
 
           {!diaryLoading && (
-            <InputBar loading={loading} onSend={sendMessage} inputRef={inputRef} />
+            <InputBar loading={loading} onSend={sendMessage} inputRef={inputRef} keyboardOpen={kbH > 0} />
           )}
         </>
       )}

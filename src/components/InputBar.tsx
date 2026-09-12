@@ -5,13 +5,15 @@ interface Props {
   onSend: (text: string) => void;
   /** 外部拿到的输入框节点（用于键盘补偿的探测） */
   inputRef?: React.RefObject<HTMLTextAreaElement>;
+  /** 键盘是否弹起：弹起时去掉底部安全区内边距，避免键盘上方多出一条空白 */
+  keyboardOpen?: boolean;
 }
 
 /**
  * 底部输入栏（统一模式）
  * 中英混合输入，AI 自动纠错 + 英文对话引导
  */
-export function InputBar({ loading, onSend, inputRef }: Props) {
+export function InputBar({ loading, onSend, inputRef, keyboardOpen }: Props) {
   const [text, setText] = useState('');
   const internalRef = useRef<HTMLTextAreaElement>(null);
   const textareaRef = inputRef || internalRef;
@@ -39,7 +41,11 @@ export function InputBar({ loading, onSend, inputRef }: Props) {
   };
 
   return (
-    <div className="safe-bottom border-t border-slate-800 bg-slate-900/95 backdrop-blur-sm px-3 pt-3 pb-3">
+    <div
+      className={`border-t border-slate-800 bg-slate-900/95 backdrop-blur-sm px-3 pt-3 pb-3 ${
+        keyboardOpen ? '' : 'safe-bottom'
+      }`}
+    >
       <div className="flex items-end gap-2 max-w-2xl mx-auto">
         <div className="flex-1 relative">
           <textarea
