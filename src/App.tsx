@@ -19,35 +19,49 @@ import type { PracticeSession } from '@/types';
 
 /**
  * 键盘弹起处理 Hook
- * 现代浏览器（interactive-widget=resizes-content）：布局视口自动压缩，
- *   innerHeight 与 vv.height 同步缩小，diff≈0 → 不干预，由 CSS 的 100dvh 自动处理。
- * 旧浏览器（resizes-visual 行为）：innerHeight 不变而 vv.height 缩小，
- *   diff>100 → 返回键盘高度，容器内联 calc(100vh - Xpx) 补偿。
+ *
+ * 兼容性最好的做法：直接读取 visualViewport.height 作为容器高度。
+ *  - Chrome 108+（interactive-widget=resizes-content）：布局视口自动压缩，
+ *    vv.height 与 innerHeight 同步缩小，容器跟随 → 表现一致
+ *  - 华为/UC/旧 Chrome 等（键盘只在视觉层，布局视口不变）：
+ *    vv.height 仍会缩小 → 容器高度跟随缩小 → 输入框始终在键盘上方，
+ *    聊天区底部也不会被键盘盖住
+ *
+ * 返回 { viewportHeight, keyboardHeight }：
+ *  - viewportHeight：当前可视视口高度（没用 visualViewport 时为 0，交给 CSS 兜底）
+ *  - keyboardHeight：键盘占用的高度（用于判断"键盘刚弹起"）
  */
 function useKeyboardAvoid() {
+  const [viewportHeight, setViewportHeight] = useState(0);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
 
+    let raf = 0;
     const handleResize = () => {
-      const viewportHeight = vv.height;
-      const windowHeight = window.innerHeight;
-      const diff = windowHeight - viewportHeight;
-      // 只处理键盘弹起（diff > 100），忽略小幅变化
-      setKeyboardHeight(diff > 100 ? diff : 0);
+      // 用 rAF 合并高频 resize，避免键盘动画期间反复 setState
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const vh = vv.height;
+        const diff = window.innerHeight - vh;
+        setViewportHeight(vh);
+        setKeyboardHeight(diff > 100 ? diff : 0);
+      });
     };
 
+    handleResize();
     vv.addEventListener('resize', handleResize);
     vv.addEventListener('scroll', handleResize);
     return () => {
+      cancelAnimationFrame(raf);
       vv.removeEventListener('resize', handleResize);
       vv.removeEventListener('scroll', handleResize);
     };
   }, []);
 
-  return keyboardHeight;
+  return { viewportHeight, keyboardHeight };
 }
 
 export default function App() {
@@ -82,7 +96,8 @@ export default function App() {
     cancelBackfill
   } = usePracticeApp();
 
-  const keyboardHeight = useKeyboardAvoid();
+  const { viewportHeight, keyboardHeight } = useKeyboardAvoid();
+  const [showDebug, setShowDebug] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
@@ -196,12 +211,20 @@ export default function App() {
     // ① AI 刚回复完成：把最后一条 assistant 消息滚到可视区顶部
     const justFinished = wasLoading && !loading && grew;
     if (justFinished) {
-      const nodes = el.querySelectorAll<HTMLElement>('[data-msg-index]');
-      const last = nodes[nodes.length - 1];
-      if (last) {
-        el.scrollTo({ top: last.offsetTop - el.offsetTop - 8, behavior: 'smooth' });
-        return;
-      }
+      // 等一帧，确保新消息的 DOM 与图片/样式都已布局完成
+      requestAnimationFrame(() => {
+        const el2 = scrollRef.current;
+        if (!el2) return;
+        const nodes = el2.querySelectorAll<HTMLElement>('[data-msg-index]');
+        const last = nodes[nodes.length - 1];
+        if (!last) return;
+        // 用 getBoundingClientRect 计算相对滚动容器的真实偏移，避免 offsetParent 陷阱
+        const elRect = el2.getBoundingClientRect();
+        const lastRect = last.getBoundingClientRect();
+        const targetTop = el2.scrollTop + (lastRect.top - elRect.top) - 12;
+        el2.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
+      });
+      return;
     }
 
     // ② 键盘刚弹起：仅在接近底部时跟随
@@ -272,8 +295,12 @@ export default function App() {
 
   return (
     <div
-      className="flex flex-col max-w-2xl mx-auto relative app-height"
-      style={keyboardHeight > 0 ? { height: `calc(100vh - ${keyboardHeight}px)` } : undefined}
+      className="flex flex-col max-w-2xl mx-auto relative app-height app-container"
+      style={
+        viewportHeight > 0
+          ? { height: `${viewportHeight}px`, maxHeight: `${viewportHeight}px` }
+          : undefined
+      }
     >
       {/* ── 顶部栏 ──────────────────────────────────────── */}
       <header className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/95 backdrop-blur-sm safe-top">
@@ -320,7 +347,12 @@ export default function App() {
 
         <h1 className="text-base font-semibold text-slate-100">
           英语练习
-          <span className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle">v3.0</span>
+          <span
+            onClick={() => setShowDebug(d => !d)}
+            className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle select-none"
+          >
+            v3.1
+          </span>
         </h1>
 
         <div className="flex items-center gap-2">
@@ -398,6 +430,18 @@ export default function App() {
             <InputBar loading={loading} onSend={sendMessage} />
           )}
         </>
+      )}
+
+      {/* ── 调试面板（点版本号开关） ─────────────────────── */}
+      {showDebug && (
+        <div className="fixed top-14 left-2 z-[90] rounded-lg bg-black/85 border border-amber-500/40 px-3 py-2 text-[10px] text-amber-300 font-mono leading-relaxed pointer-events-none">
+          <div>innerH: {typeof window !== 'undefined' ? window.innerHeight : 0}</div>
+          <div>vvH: {viewportHeight.toFixed(0)}</div>
+          <div>kbH: {keyboardHeight.toFixed(0)}</div>
+          <div>vvTop: {typeof window !== 'undefined' && window.visualViewport ? window.visualViewport.offsetTop.toFixed(0) : '-'}</div>
+          <div>docH: {typeof window !== 'undefined' ? document.documentElement.clientHeight : 0}</div>
+          <div>msgs: {session?.messages.length ?? 0}</div>
+        </div>
       )}
 
       {/* ── Toast 提示 ──────────────────────────────────── */}

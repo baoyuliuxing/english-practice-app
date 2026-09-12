@@ -33,6 +33,18 @@ html, body, #root {
   height: 100dvh;
 }
 
+/* 应用主容器：固定在视口顶部，高度由 JS 按 visualViewport.height 动态设置。
+ * 这样无论浏览器是否支持 interactive-widget=resizes-content，
+ * 键盘弹起时容器都会变矮，输入框始终位于键盘上方，聊天区底部不会被遮挡。 */
+.app-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
 /* 安全区补偿（viewport-fit=cover 时内容会延伸到刘海/Home Indicator 之下） */
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
