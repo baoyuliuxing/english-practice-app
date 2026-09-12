@@ -43,6 +43,9 @@ html, body, #root {
   right: 0;
   margin: 0 auto;
   overflow: hidden;
+  background: #0f172a;
+  /* translateY 推到上方时不露出 body */
+  will-change: transform;
 }
 
 /* 安全区补偿（viewport-fit=cover 时内容会延伸到刘海/Home Indicator 之下） */

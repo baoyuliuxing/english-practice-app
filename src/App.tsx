@@ -32,36 +32,77 @@ import type { PracticeSession } from '@/types';
  *  - keyboardHeight：键盘占用的高度（用于判断"键盘刚弹起"）
  */
 function useKeyboardAvoid() {
-  const [viewportHeight, setViewportHeight] = useState(0);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-
     let raf = 0;
-    const handleResize = () => {
-      // 用 rAF 合并高频 resize，避免键盘动画期间反复 setState
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const vh = vv.height;
-        const diff = window.innerHeight - vh;
-        setViewportHeight(vh);
-        setKeyboardHeight(diff > 100 ? diff : 0);
-      });
+    let timer1: any = 0;
+    let timer2: any = 0;
+    let timer3: any = 0;
+
+    const measure = () => {
+      const ta = inputRef.current;
+      if (!ta) {
+        setKeyboardHeight(0);
+        return;
+      }
+      // 是否聚焦
+      if (document.activeElement !== ta) {
+        setKeyboardHeight(0);
+        return;
+      }
+      const rect = ta.getBoundingClientRect();
+      const winH = window.innerHeight;
+      const overflow = rect.bottom - winH;
+      // 如果 textarea 底部还在窗口内（≤0），说明没被键盘盖住
+      setKeyboardHeight(overflow > 20 ? overflow : 0);
     };
 
-    handleResize();
-    vv.addEventListener('resize', handleResize);
-    vv.addEventListener('scroll', handleResize);
-    return () => {
+    const onFocusIn = (e: FocusEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t || (t.tagName !== 'TEXTAREA' && t.tagName !== 'INPUT')) return;
+      // 多次测量，捕获键盘动画过程中各个阶段
+      timer1 = setTimeout(measure, 100);
+      timer2 = setTimeout(measure, 300);
+      timer3 = setTimeout(measure, 600);
+    };
+
+    const onFocusOut = () => {
+      setTimeout(() => {
+        setKeyboardHeight(0);
+      }, 200);
+    };
+
+    // 视觉视口变化时（支持它的浏览器）也测量一次
+    const schedule = () => {
       cancelAnimationFrame(raf);
-      vv.removeEventListener('resize', handleResize);
-      vv.removeEventListener('scroll', handleResize);
+      raf = requestAnimationFrame(measure);
+    };
+
+    document.addEventListener('focusin', onFocusIn);
+    document.addEventListener('focusout', onFocusOut);
+    window.addEventListener('resize', schedule);
+    const vv = window.visualViewport;
+    if (vv) {
+      vv.addEventListener('resize', schedule);
+    }
+
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
+      cancelAnimationFrame(raf);
+      document.removeEventListener('focusin', onFocusIn);
+      document.removeEventListener('focusout', onFocusOut);
+      window.removeEventListener('resize', schedule);
+      if (vv) {
+        vv.removeEventListener('resize', schedule);
+      }
     };
   }, []);
 
-  return { viewportHeight, keyboardHeight };
+  return { inputRef, keyboardHeight };
 }
 
 export default function App() {
@@ -96,7 +137,7 @@ export default function App() {
     cancelBackfill
   } = usePracticeApp();
 
-  const { viewportHeight, keyboardHeight } = useKeyboardAvoid();
+  const { inputRef, keyboardHeight } = useKeyboardAvoid();
   const [showDebug, setShowDebug] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
@@ -296,11 +337,10 @@ export default function App() {
   return (
     <div
       className="flex flex-col max-w-2xl mx-auto relative app-height app-container"
-      style={
-        viewportHeight > 0
-          ? { height: `${viewportHeight}px`, maxHeight: `${viewportHeight}px` }
-          : undefined
-      }
+      style={{
+        transform: keyboardHeight > 0 ? `translateY(-${keyboardHeight}px)` : undefined,
+        transition: 'transform 0.18s ease-out'
+      }}
     >
       {/* ── 顶部栏 ──────────────────────────────────────── */}
       <header className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/95 backdrop-blur-sm safe-top">
@@ -351,7 +391,7 @@ export default function App() {
             onClick={() => setShowDebug(d => !d)}
             className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle select-none"
           >
-            v3.1
+            v3.2
           </span>
         </h1>
 
@@ -427,7 +467,7 @@ export default function App() {
           </div>
 
           {!diaryLoading && (
-            <InputBar loading={loading} onSend={sendMessage} />
+            <InputBar loading={loading} onSend={sendMessage} inputRef={inputRef} />
           )}
         </>
       )}
@@ -436,10 +476,8 @@ export default function App() {
       {showDebug && (
         <div className="fixed top-14 left-2 z-[90] rounded-lg bg-black/85 border border-amber-500/40 px-3 py-2 text-[10px] text-amber-300 font-mono leading-relaxed pointer-events-none">
           <div>innerH: {typeof window !== 'undefined' ? window.innerHeight : 0}</div>
-          <div>vvH: {viewportHeight.toFixed(0)}</div>
-          <div>kbH: {keyboardHeight.toFixed(0)}</div>
-          <div>vvTop: {typeof window !== 'undefined' && window.visualViewport ? window.visualViewport.offsetTop.toFixed(0) : '-'}</div>
-          <div>docH: {typeof window !== 'undefined' ? document.documentElement.clientHeight : 0}</div>
+          <div>ta.bottom: {inputRef.current ? inputRef.current.getBoundingClientRect().bottom.toFixed(0) : '-'}</div>
+          <div>kbH (推上): {keyboardHeight.toFixed(0)}</div>
           <div>msgs: {session?.messages.length ?? 0}</div>
         </div>
       )}

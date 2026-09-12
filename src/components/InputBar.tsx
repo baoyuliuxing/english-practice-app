@@ -3,15 +3,18 @@ import { useState, useRef, useEffect } from 'react';
 interface Props {
   loading: boolean;
   onSend: (text: string) => void;
+  /** 外部拿到的输入框节点（用于键盘补偿的探测） */
+  inputRef?: React.RefObject<HTMLTextAreaElement>;
 }
 
 /**
  * 底部输入栏（统一模式）
  * 中英混合输入，AI 自动纠错 + 英文对话引导
  */
-export function InputBar({ loading, onSend }: Props) {
+export function InputBar({ loading, onSend, inputRef }: Props) {
   const [text, setText] = useState('');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const internalRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = inputRef || internalRef;
 
   useEffect(() => {
     const ta = textareaRef.current;
