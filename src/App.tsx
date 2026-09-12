@@ -163,23 +163,56 @@ export default function App() {
     }
   }, [addingWord, vocabList, session?.id, refreshVocab]);
 
-  // ── 智能滚动到底部：仅在「距底 ≤ 100px」或「刚发新消息」时滚动 ─────
-  // 目的：键盘弹起时若用户在中间/顶部浏览历史，不应被强制拉到底。
+  // ── 智能滚动 ────────────────────────────────────────────
+  // 规则：
+  //  1) 发送新消息后（消息数增长）→ 滚到底，让用户看到自己发的 + 等待 AI
+  //  2) AI 回复完成（loading true→false，且消息数再增长）→ 滚到「这条回复的顶部」，
+  //     让用户从回复第一行开始阅读，而不是被甩到最底部
+  //  3) 键盘弹起 / 其他重渲染 → 只有用户在「接近底部」时才跟随滚动
+  //     （阈值放宽到 180px，避免差一点点就不跟随的情况）
 
   const prevMsgCountRef = useRef(0);
+  const prevLoadingRef = useRef(false);
+  const prevKeyboardRef = useRef(0);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+
     const cur = session?.messages.length || 0;
     const grew = cur > prevMsgCountRef.current;
+    const wasLoading = prevLoadingRef.current;
+    const keyboardJustOpened = keyboardHeight > 0 && prevKeyboardRef.current === 0;
     prevMsgCountRef.current = cur;
+    prevLoadingRef.current = loading;
+    prevKeyboardRef.current = keyboardHeight;
 
-    // 距底距离
+    // 距底距离（键盘动画期间 clientHeight 会抖动，留足余量）
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const nearBottom = distFromBottom <= 100;
+    const nearBottom = distFromBottom <= 180;
+    // 键盘刚弹起时给更宽松的判定，避免"差一点点就不跟随"
+    const nearBottomForKeyboard = distFromBottom <= 260;
 
-    // 触发条件：在底部 / 加载中 / 刚发新消息
+    // ① AI 刚回复完成：把最后一条 assistant 消息滚到可视区顶部
+    const justFinished = wasLoading && !loading && grew;
+    if (justFinished) {
+      const nodes = el.querySelectorAll<HTMLElement>('[data-msg-index]');
+      const last = nodes[nodes.length - 1];
+      if (last) {
+        el.scrollTo({ top: last.offsetTop - el.offsetTop - 8, behavior: 'smooth' });
+        return;
+      }
+    }
+
+    // ② 键盘刚弹起：仅在接近底部时跟随
+    if (keyboardJustOpened) {
+      if (nearBottomForKeyboard) {
+        el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+      }
+      return;
+    }
+
+    // ③ 其余情况：在底部 / 加载中 / 刚发新消息 → 滚到底
     if (nearBottom || loading || grew) {
       el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     }
@@ -287,7 +320,7 @@ export default function App() {
 
         <h1 className="text-base font-semibold text-slate-100">
           英语练习
-          <span className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle">v2.9</span>
+          <span className="ml-1.5 text-[10px] font-normal text-slate-500 align-middle">v3.0</span>
         </h1>
 
         <div className="flex items-center gap-2">
@@ -345,8 +378,10 @@ export default function App() {
               </div>
             )}
 
-            {session.messages.map((msg) => (
-              <MessageBubble key={msg.id} message={msg} onAddWord={handleAddWord} />
+            {session.messages.map((msg, i) => (
+              <div key={msg.id} data-msg-index={i}>
+                <MessageBubble message={msg} onAddWord={handleAddWord} />
+              </div>
             ))}
 
             {loading && <TypingIndicator />}
