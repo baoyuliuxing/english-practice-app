@@ -34,8 +34,12 @@ html, body, #root {
   height: 100dvh;
 }
 
-/* 应用主容器：撑满视口，内部自己管理布局 */
+/* 应用主容器：撑满视口，内部自己管理布局。
+ * 高度基准用 100dvh（不支持则回落到 100vh）；
+ * 键盘弹起时由 JS 内联 height: calc(100dvh - 键盘高度) 覆盖，实现整体收缩。 */
 .app-container {
+  height: 100vh;
+  height: 100dvh;
   margin: 0 auto;
   overflow: hidden;
   background: #0f172a;
